@@ -4,8 +4,8 @@ from typing import Any
 
 from sqlalchemy import and_, desc, select
 
-from loom.models import Task, TaskEvent, TaskStatus
-from loom.persistence.db import EventLogRow, RegistryRow, ScheduleRunRow, TaskRow, WorkflowVersionRow
+from loom.models import Organization, Task, TaskEvent, TaskStatus
+from loom.persistence.db import EventLogRow, OrganizationRow, RegistryRow, ScheduleRunRow, TaskRow, WorkflowVersionRow
 
 
 class TaskRepository:
@@ -374,8 +374,53 @@ class ScheduleRunRepository:
             session.commit()
 
 
+class OrganizationRepository:
+    def __init__(self, session_factory):
+        self._session_factory = session_factory
+
+    def get(self, org_id: str = "default") -> Organization | None:
+        with self._session_factory() as session:
+            row = session.get(OrganizationRow, org_id)
+            if not row:
+                return None
+            return Organization(
+                org_id=row.org_id,
+                name=row.name,
+                litellm_base_url=row.litellm_base_url,
+                litellm_api_key=row.litellm_api_key,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+
+    def upsert(self, org: Organization) -> Organization:
+        with self._session_factory() as session:
+            row = session.get(OrganizationRow, org.org_id)
+            if row:
+                row.name = org.name
+                row.litellm_base_url = org.litellm_base_url
+                row.litellm_api_key = org.litellm_api_key
+            else:
+                session.add(
+                    OrganizationRow(
+                        org_id=org.org_id,
+                        name=org.name,
+                        litellm_base_url=org.litellm_base_url,
+                        litellm_api_key=org.litellm_api_key,
+                    )
+                )
+            session.commit()
+        return org
+
+    def get_or_create(self, org_id: str = "default") -> Organization:
+        org = self.get(org_id)
+        if org:
+            return org
+        return self.upsert(Organization(org_id=org_id, name="My Organization"))
+
+
 class Repositories:
     def __init__(self, session_factory):
+        self.organization = OrganizationRepository(session_factory)
         self.tasks = TaskRepository(session_factory)
         self.workflows = WorkflowRepository(session_factory)
         self.roles = GenericRegistryRepository(session_factory, "roles")

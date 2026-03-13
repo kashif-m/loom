@@ -2821,7 +2821,7 @@ TASK-092
 
 # 30. Phase 21 — Local Operator Experience Completion
 
-## [x] TASK-094: End-to-end “create your own workflow in GUI” golden path
+## [x] TASK-094: End-to-end "create your own workflow in GUI" golden path
 
 ### Objective
 
@@ -3032,3 +3032,739 @@ Protect model routing behavior from regressions.
 
 TASK-098
 TASK-099
+
+---
+
+# 34. Phase 23 — Organization & Agent Model Enhancement (NEW)
+
+## Objective
+
+Introduce organization-centric data model and enhanced agent bindings for step execution.
+
+### Design Principles
+
+* **Single org for now**: Multi-tenancy can be added later
+* **Agent = Role + Binding**: Personality from prompt profile, execution from agent binding
+* **Markdown-first**: Workflows authored in markdown with agent annotations
+* **Agent types**: opencode, litellm, openai (execution targets)
+
+---
+
+## [ ] TASK-101: Add Organization singleton model
+
+### Objective
+
+Create the top-level organization container for all entities.
+
+### Work
+
+* Add `Organization` Pydantic model to `loom/models.py`:
+  * `org_id: str` (singleton, "default" for now)
+  * `name: str`
+  * `description: str`
+  * `settings: dict[str, Any]`
+  * `default_domain_pack: str`
+  * `created_at`, `updated_at`
+* Create `loom/registries/org_registry.py` for org CRUD
+* Add org-scoped foreign key references to roles, workflows, domain_packs
+* Add database migration for org table
+
+### Deliverables
+
+* Organization model and registry
+* Database schema update
+* Migration script
+
+### Acceptance Criteria
+
+* Organization can be created, updated, retrieved
+* All existing entities can reference the singleton org
+* Migrations apply cleanly
+
+### Dependencies
+
+TASK-003
+TASK-004
+
+---
+
+## [ ] TASK-102: Design and implement AgentBinding model
+
+### Objective
+
+Define how roles connect to execution targets (opencode, litellm, openai).
+
+### Work
+
+* Add `AgentBinding` Pydantic model:
+  * `binding_type: Literal["opencode", "litellm", "openai"]`
+  * `config: dict[str, Any]` (type-specific settings)
+  
+  Config examples:
+  * opencode: `{"repo_path": "/docs", "cmd": "opencode"}`
+  * litellm: `{"model": "openai/gpt-4", "temperature": 0.2}`
+  * openai: `{"model": "gpt-4o", "api_key_ref": "env:OPENAI_API_KEY"}`
+
+* Extend `RoleDefinition` with:
+  * `agent_binding: AgentBinding | None`
+  * `prompt_profile_id: str | None` (personality/behavior)
+
+### Deliverables
+
+* AgentBinding schema
+* Extended RoleDefinition with agent binding support
+* Validation logic for binding configs
+
+### Acceptance Criteria
+
+* Role can have an optional agent binding
+* Binding configs are validated per type
+* OpenCode binding type is supported
+
+### Dependencies
+
+TASK-003
+TASK-009
+
+---
+
+## [ ] TASK-103: Extend CompiledWorkflowStep with agent override
+
+### Objective
+
+Allow steps to override role's default agent binding.
+
+### Work
+
+* Extend `CompiledWorkflowStep` model:
+  * `agent_override: str | None` (references another role's binding)
+  * `batch_group_id: str | None` (for batch step assignment)
+  * `prompt_profile_id: str | None` (step-specific personality override)
+
+### Deliverables
+
+* Extended CompiledWorkflowStep schema
+* IR validator updates to check agent override references
+
+### Acceptance Criteria
+
+* Step can optionally specify agent_override
+* Validator ensures override references valid role
+* Batch grouping metadata is preserved in IR
+
+### Dependencies
+
+TASK-003
+TASK-014
+
+---
+
+## [ ] TASK-104: Update markdown parser for agent annotations
+
+### Objective
+
+Parse agent assignment annotations from workflow markdown.
+
+### Work
+
+* Extend `loom/compiler/markdown_parser.py` to extract:
+  * `**Agent:** @agent_name` annotations per step
+  * `**Batch Group:** group_id` annotations
+  * `**Prompt Profile:** profile_id` annotations
+  
+* Add to `ParsedWorkflowDocument`:
+  * `step_agents: dict[str, str]` (step_id -> agent/role reference)
+  * `step_batch_groups: dict[str, str]`
+  * `step_prompt_profiles: dict[str, str]`
+
+### Deliverables
+
+* Enhanced markdown parser
+* Updated ParsedWorkflowDocument model
+
+### Acceptance Criteria
+
+* Markdown with agent annotations parses correctly
+* Annotations are preserved through parsing
+* Missing/invalid annotations fail gracefully
+
+### Dependencies
+
+TASK-012
+TASK-102
+
+---
+
+## [ ] TASK-105: Update LLM compiler to emit agent bindings
+
+### Objective
+
+Compile agent annotations into workflow IR.
+
+### Work
+
+* Update `loom/compiler/llm_compiler.py` to:
+  * Read agent annotations from parsed document
+  * Generate `agent_override` in CompiledWorkflowStep when specified
+  * Generate `batch_group_id` when specified
+  * Generate `prompt_profile_id` when specified
+  
+* Add compiler prompt guidance for agent binding extraction
+
+### Deliverables
+
+* Updated compiler service
+* Compiler tests with agent annotations
+
+### Acceptance Criteria
+
+* Agent annotations in markdown become agent_override in IR
+* Batch groups are preserved in compiled output
+* Prompt profile overrides are compiled correctly
+
+### Dependencies
+
+TASK-013
+TASK-104
+
+---
+
+## [ ] TASK-106: Update IR validator for agent binding compatibility
+
+### Objective
+
+Validate that agent bindings are compatible with step requirements.
+
+### Work
+
+* Extend `loom/compiler/ir_validator.py`:
+  * Verify agent_override references existing role with valid binding
+  * Check that agent's capabilities satisfy step's required_capabilities
+  * Validate batch_group_id references are consistent
+  
+* Add compatibility matrix generation:
+  * For each role with agent binding, list compatible/incompatible steps
+
+### Deliverables
+
+* Enhanced IR validator
+* Role-step compatibility checking
+
+### Acceptance Criteria
+
+* Invalid agent override fails validation with clear error
+* Capability mismatch is detected at validation time
+* Compatibility matrix can be generated for any role
+
+### Dependencies
+
+TASK-014
+TASK-102
+TASK-103
+
+---
+
+## [ ] TASK-107: Update execution layer for agent binding routing
+
+### Objective
+
+Route step execution through correct adapter based on agent binding.
+
+### Work
+
+* Update `loom/execution/step_runner.py`:
+  * Resolve step's effective agent (role's binding or override)
+  * Route to appropriate adapter based on binding_type:
+    * "opencode" → OpenCodeAdapter for context
+    * "litellm" → ModelRouter for LLM execution
+    * "openai" → OpenAIAgentsAdapter for direct execution
+  
+* Update `loom/execution/context_assembler.py`:
+  * Use agent binding config for context assembly parameters
+
+### Deliverables
+
+* Updated step runner with agent routing
+* Updated context assembler
+
+### Acceptance Criteria
+
+* Step with opencode binding uses OpenCodeAdapter
+* Step with litellm binding uses ModelRouter
+* Step with openai binding uses OpenAIAgentsAdapter
+* Override binding is respected when specified
+
+### Dependencies
+
+TASK-023
+TASK-102
+TASK-103
+TASK-097
+
+---
+
+## [ ] TASK-108: Add /api/org endpoints
+
+### Objective
+
+Expose organization management via API.
+
+### Work
+
+* Add to `loom/ingress/admin_adapter.py` or new `loom/ingress/org_adapter.py`:
+  * `GET /api/org` - get organization config
+  * `PUT /api/org` - update organization
+  * `GET /api/org/integrations` - integration health status
+  
+* Add OrgRegistry to dependency injection container
+
+### Deliverables
+
+* Organization API endpoints
+* Integration status aggregation
+
+### Acceptance Criteria
+
+* Org config can be read/updated via API
+* Integration status shows all adapters (OpenCode, GitHub, PlantUML, etc.)
+* Only admin can modify org config
+
+### Dependencies
+
+TASK-039
+TASK-101
+
+---
+
+## [ ] TASK-109: Update /api/agents endpoints for agent bindings
+
+### Objective
+
+Support agent binding CRUD in agent management API.
+
+### Work
+
+* Update `loom/ui/router.py` agent endpoints:
+  * `POST /api/agents` - create agent with binding
+  * `PUT /api/agents/{role_id}` - update agent binding
+  * `GET /api/agents/{role_id}` - include binding details
+  * `GET /api/agents/{role_id}/compatibility` - show workflow step compatibility
+  
+* Update `AgentBuilderRequest` to include agent_binding field
+
+### Deliverables
+
+* Updated agent API with binding support
+* Compatibility checking endpoint
+
+### Acceptance Criteria
+
+* Agent can be created with binding via API
+* Agent binding can be updated
+* Compatibility matrix returned for any agent
+
+### Dependencies
+
+TASK-081
+TASK-102
+TASK-106
+
+---
+
+# 35. Phase 24 — GUI Screens Redesign (Organization-Centric) (NEW)
+
+## Objective
+
+Redesign GUI with 4 main screens: Organization Dashboard, Agents, Workflows, Tasks.
+
+### Design Principles
+
+* **SPA with routing**: Clean navigation between screens
+* **Organization-first**: Dashboard shows org-level overview
+* **Markdown-first workflow editor**: Split-pane markdown + IR preview
+* **Agent-centric**: Dedicated screen for agent creation/management
+* **Step-level agent assignment**: Assign agents to workflow steps
+
+---
+
+## [ ] TASK-110: Redesign GUI as SPA with routing
+
+### Objective
+
+Replace monolithic single-page UI with navigable SPA.
+
+### Work
+
+* Update `loom/ui/static/index.html`:
+  * Add navigation sidebar/header with screen links:
+    * Organization (/ui/org)
+    * Agents (/ui/agents)
+    * Workflows (/ui/workflows)
+    * Tasks (/ui/tasks)
+  * Add content areas for each screen (show/hide based on route)
+  * Add client-side routing (hash-based or History API)
+
+* Update `loom/ui/static/app.js`:
+  * Add route handling
+  * Add screen state management
+  * Add navigation guards (auth check)
+
+### Deliverables
+
+* SPA structure with 4 screens
+* Client-side routing
+
+### Acceptance Criteria
+
+* User can navigate between 4 screens
+* URL updates reflect current screen
+* Page refresh returns to same screen
+
+### Dependencies
+
+TASK-076
+
+---
+
+## [ ] TASK-111: Build Organization Dashboard screen
+
+### Objective
+
+Create org-level overview and configuration screen.
+
+### Work
+
+* Screen layout:
+  * **Header**: Org name, description, edit button
+  * **Integration Status Cards**: 
+    * OpenCode (green/red based on availability)
+    * GitHub / gh
+    * PlantUML
+    * LiteLLM
+    * Graphiti
+    * OpenAI
+    * LangSmith
+  * **Summary Stats**: 
+    * X agents configured
+    * Y workflows active
+    * Z tasks today
+  * **Quick Actions**:
+    * Bootstrap Docs Pack
+    * Run diagnostics
+    * Load sample workflow
+
+* API integration:
+  * `GET /api/org`
+  * `GET /api/integrations/status`
+  * `POST /api/bootstrap/docs-pack`
+
+### Deliverables
+
+* Organization Dashboard UI
+* Integration status visualization
+
+### Acceptance Criteria
+
+* Org config displayed
+* All integration statuses visible
+* Quick actions work
+* Stats reflect actual system state
+
+### Dependencies
+
+TASK-108
+TASK-110
+
+---
+
+## [ ] TASK-112: Build Agents management screen
+
+### Objective
+
+Dedicated screen for creating and managing agents.
+
+### Work
+
+* **Agent List View**:
+  * Cards showing each agent (role)
+  * Badge showing binding type (opencode/litellm/openai)
+  * Capability tags
+  * Status (active/retired)
+  * Click to view details
+
+* **Create Agent Flow**:
+  * Step 1: Basic info (role_id, title, domain_pack)
+  * Step 2: Select agent type:
+    * OpenCode → form fields: repo_path, cmd
+    * LiteLLM → form fields: provider, model, temperature
+    * OpenAI → form fields: model, api_key_ref
+  * Step 3: Assign capabilities (multi-select from registry)
+  * Step 4: Assign policies (multi-select)
+  * Step 5: Assign prompt profile (dropdown)
+  * Step 6: Review and create
+
+* **Agent Detail View**:
+  * Show all configuration
+  * Edit button
+  * Compatibility matrix (which workflow steps this agent can execute)
+  * Recent tasks using this agent
+  * Retire button
+
+* API integration:
+  * `GET /api/roles`
+  * `GET /api/capabilities`
+  * `GET /api/policies`
+  * `GET /api/prompts`
+  * `POST /api/agents` (with binding)
+  * `PUT /api/agents/{role_id}`
+  * `GET /api/agents/{role_id}/compatibility`
+
+### Deliverables
+
+* Agents screen with list/create/detail views
+* Agent type-specific forms
+* Compatibility matrix display
+
+### Acceptance Criteria
+
+* New agent can be created with all binding types
+* OpenCode agent creation works
+* Compatibility matrix shows green/red for each step
+* Agent list shows type badges
+
+### Dependencies
+
+TASK-109
+TASK-110
+
+---
+
+## [ ] TASK-113: Build Workflows screen with markdown editor
+
+### Objective
+
+Enhanced workflow management with markdown-first editing.
+
+### Work
+
+* **Workflow List View**:
+  * Table showing workflows
+  * Columns: workflow_id, active version, status, last updated
+  * Actions: view, edit, activate, deprecate
+
+* **Workflow Editor** (split-pane):
+  * Left: Markdown editor (CodeMirror/Monaco)
+    * Syntax highlighting for markdown
+    * Line numbers
+    * Agent annotation hints (`**Agent:** @agent_name`)
+  * Right: IR Preview / Validation
+    * Show compiled IR as formatted JSON/YAML
+    * Show validation errors inline
+    * Show step list with agent assignments
+
+* **Step Agent Assignment Widget**:
+  * In markdown editor, click step header
+  * Popup: "Assign Agent" dropdown (list of roles with bindings)
+  * Show compatibility indicator (✓ if agent has required capabilities, ✗ if not)
+  * Insert/update `**Agent:** @role_id` annotation in markdown
+
+* **Batch Assignment Feature**:
+  * Checkboxes next to each step in IR preview
+  * "Assign Selected Steps to Agent" dropdown
+  * Apply to all selected steps at once
+  * Preview changes before save
+
+* **Version Management**:
+  * Version history timeline
+  * Diff viewer (markdown diff + IR diff)
+  * Activate/Deprecate/Rollback buttons
+
+* API integration:
+  * `GET /api/workflows`
+  * `GET /api/workflows/{workflow_id}/versions`
+  * `POST /api/workflows/validate`
+  * `POST /api/workflows/publish`
+  * `POST /api/workflows/{workflow_id}/{version}/activate`
+  * `GET /api/workflows/{workflow_id}/diff/{from}/{to}`
+  * `GET /api/roles` (for agent dropdown)
+
+### Deliverables
+
+* Workflows screen with split-pane editor
+* Step agent assignment widget
+* Batch assignment feature
+* Version diff viewer
+
+### Acceptance Criteria
+
+* Markdown editor with agent annotation support
+* Real-time IR preview
+* Step-level agent assignment works
+* Batch assignment works for multiple steps
+* Compatibility check shows visual indicator
+
+### Dependencies
+
+TASK-080
+TASK-104
+TASK-105
+TASK-110
+
+---
+
+## [ ] TASK-114: Build Tasks screen (enhanced)
+
+### Objective
+
+Enhanced task console with agent attribution.
+
+### Work
+
+* **Task List View**:
+  * Table of tasks
+  * Filters: status, workflow, date range
+  * Columns: task_id, workflow, current step, assigned agent(s), status
+
+* **Task Detail View**:
+  * Request details
+  * Current step with agent info
+  * Execution trace with per-step agent attribution
+  * Step outputs
+  * Events stream
+
+* **Task Controls**:
+  * Run button
+  * Retry button
+  * Mark blocked/failed with reason
+  * Stream events (SSE)
+
+* **Intake Widget**:
+  * Text input for natural language request
+  * Domain pack selector
+  * Async checkbox
+  * Submit button
+
+* API integration (mostly existing):
+  * `GET /api/tasks`
+  * `GET /api/tasks/{task_id}`
+  * `GET /api/tasks/{task_id}/trace`
+  * `GET /api/tasks/{task_id}/events`
+  * `POST /api/tasks/intake`
+  * `POST /api/tasks/{task_id}/run`
+
+### Deliverables
+
+* Enhanced Tasks screen
+* Agent attribution in trace view
+* Intake widget
+
+### Acceptance Criteria
+
+* Task list shows agent info
+* Trace view shows which agent executed each step
+* Intake creates task successfully
+
+### Dependencies
+
+TASK-082
+TASK-110
+
+---
+
+## [ ] TASK-115: Add workflow step compatibility visualization
+
+### Objective
+
+Visual indicator of which agents can execute which steps.
+
+### Work
+
+* In workflow editor IR preview:
+  * Show each step with required capabilities
+  * Show indicator per step: how many agents are compatible
+  * Click to see compatible agent list
+  
+* Color coding:
+  * Green: At least one compatible agent
+  * Yellow: Compatible agents exist but none assigned
+  * Red: No compatible agents configured
+
+### Deliverables
+
+* Step compatibility visualization
+* Agent compatibility list per step
+
+### Acceptance Criteria
+
+* Steps show compatibility status
+* Color coding matches agent availability
+* Can view list of compatible agents
+
+### Dependencies
+
+TASK-106
+TASK-113
+
+---
+
+## [ ] TASK-116: GUI integration tests for new screens
+
+### Objective
+
+Verify new GUI screens work end-to-end.
+
+### Work
+
+* Add e2e tests for:
+  * Organization dashboard loads
+  * Agent creation flow (all types)
+  * Workflow creation with agent assignment
+  * Batch step assignment
+  * Task intake and execution
+  * Navigation between screens
+
+### Deliverables
+
+* E2E test suite for new GUI
+
+### Acceptance Criteria
+
+* All 4 screens have basic e2e coverage
+* Critical user flows are tested
+
+### Dependencies
+
+TASK-111
+TASK-112
+TASK-113
+TASK-114
+
+---
+
+# 36. Build Order Summary (New Phases)
+
+After TASK-100, execute:
+
+1. **Phase 23** (Organization & Agent Model):
+   * TASK-101 → TASK-109
+
+2. **Phase 24** (GUI Screens Redesign):
+   * TASK-110 → TASK-116
+
+---
+
+# 37. Acceptance Criteria Summary
+
+After completing TASK-101 through TASK-116:
+
+| Requirement | How It's Delivered |
+|-------------|-------------------|
+| **Single org configured** | Organization Dashboard (TASK-111) |
+| **Configure agents first** | Agents screen with binding types including OpenCode (TASK-112) |
+| **Configure workflows** | Workflows screen with markdown editor (TASK-113) |
+| **Steps assigned to agents** | Step-level agent assignment widget (TASK-113) |
+| **Batch step assignment** | Multi-select + batch assign feature (TASK-113) |
+| **Markdown → compiled IR** | Split-pane editor with IR preview (TASK-113) |
+| **Opencode agent available** | OpenCode binding type in agent creation (TASK-112) |
+| **All tools integrated** | Integration status in Org Dashboard (TASK-111) |
+| **GUI screens separated** | 4-screen SPA with navigation (TASK-110) |

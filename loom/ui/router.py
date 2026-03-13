@@ -18,6 +18,7 @@ from loom.models import (
     DomainPackManifest,
     ModelDefinition,
     ModelProviderDefinition,
+    Organization,
     PolicyDefinition,
     PromptProfile,
     RoleDefinition,
@@ -94,6 +95,12 @@ class AgentBuilderRequest(BaseModel):
     prompt_profile: PromptProfile
 
 
+class OrganizationRequest(BaseModel):
+    name: str
+    litellm_base_url: str | None = None
+    litellm_api_key: str | None = None
+
+
 def _csrf_dependency(settings):
     def _dep(
         x_csrf_token: str | None = Header(default=None),
@@ -166,6 +173,24 @@ def build_ui_router(container) -> APIRouter:
         resp = JSONResponse({"csrf": token, "role": user.role})
         resp.set_cookie("loom_csrf", token, httponly=False, samesite="strict")
         return resp
+
+    @router.get("/organization")
+    def get_organization(user: UIUser = user_dependency) -> dict:
+        _ = user
+        org = container.repositories.organization.get_or_create()
+        return org.model_dump(mode="json")
+
+    @router.post("/organization", dependencies=[Depends(csrf_dep)])
+    def update_organization(payload: OrganizationRequest, user: UIUser = user_dependency) -> dict:
+        require_role(user, "operator")
+        org = Organization(
+            org_id="default",
+            name=payload.name,
+            litellm_base_url=payload.litellm_base_url,
+            litellm_api_key=payload.litellm_api_key,
+        )
+        container.repositories.organization.upsert(org)
+        return org.model_dump(mode="json")
 
     @router.get("/integrations/status")
     def integration_status(user: UIUser = user_dependency) -> dict:

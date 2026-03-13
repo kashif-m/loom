@@ -19,6 +19,15 @@ class StatusEnum(str, Enum):
     archived = "archived"
 
 
+class Organization(BaseModel):
+    org_id: str = Field(default="default")
+    name: str = "My Organization"
+    litellm_base_url: str | None = None
+    litellm_api_key: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class TaskStatus(str, Enum):
     created = "created"
     triaging = "triaging"

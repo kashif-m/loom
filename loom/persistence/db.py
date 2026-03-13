@@ -9,6 +9,19 @@ class Base(DeclarativeBase):
     pass
 
 
+class OrganizationRow(Base):
+    __tablename__ = "organizations"
+
+    org_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), default="My Organization")
+    litellm_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    litellm_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TaskRow(Base):
     __tablename__ = "tasks"
 
