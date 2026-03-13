@@ -15,6 +15,10 @@ for cmd in "${optional[@]}"; do
   if command -v "$cmd" >/dev/null 2>&1; then
     echo "ok optional connector: $cmd"
   else
-    echo "missing optional connector: $cmd"
+    if [ "$cmd" = "opencode" ] && [ -d ".tools/opencode/.git" ]; then
+      echo "optional connector source cloned: opencode (.tools/opencode), CLI not installed in PATH"
+    else
+      echo "missing optional connector: $cmd"
+    fi
   fi
 done
