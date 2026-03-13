@@ -24,6 +24,11 @@ class Organization(BaseModel):
     name: str = "My Organization"
     litellm_base_url: str | None = None
     litellm_api_key: str | None = None
+    litellm_default_model: str = "open-large"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
+    opencode_enabled: bool = False
+    opencode_cmd: str = "opencode"
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

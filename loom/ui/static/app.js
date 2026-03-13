@@ -118,6 +118,12 @@ async function loadOrganization() {
     document.getElementById('orgName').value = org.name || '';
     document.getElementById('orgLiteLLMUrl').value = org.litellm_base_url || '';
     document.getElementById('orgLiteLLMApiKey').value = org.litellm_api_key || '';
+    document.getElementById('orgLiteLLMModel').value = org.litellm_default_model || 'open-large';
+    document.getElementById('orgOpenAIApiKey').value = org.openai_api_key || '';
+    document.getElementById('orgOpenAIModel').value = org.openai_model || 'gpt-4.1-mini';
+    document.getElementById('orgOpenCodeEnabled').checked = org.opencode_enabled || false;
+    document.getElementById('orgOpenCodeCmd').value = org.opencode_cmd || 'opencode';
+    updateOpenCodeStatus();
   } catch (e) {
     console.error('Failed to load organization:', e);
   }
@@ -128,9 +134,29 @@ async function saveOrganization() {
     name: document.getElementById('orgName').value,
     litellm_base_url: document.getElementById('orgLiteLLMUrl').value || null,
     litellm_api_key: document.getElementById('orgLiteLLMApiKey').value || null,
+    litellm_default_model: document.getElementById('orgLiteLLMModel').value || 'open-large',
+    openai_api_key: document.getElementById('orgOpenAIApiKey').value || null,
+    openai_model: document.getElementById('orgOpenAIModel').value || 'gpt-4.1-mini',
+    opencode_enabled: document.getElementById('orgOpenCodeEnabled').checked,
+    opencode_cmd: document.getElementById('orgOpenCodeCmd').value || 'opencode',
   };
   await call('/api/organization', 'POST', payload);
   alert('Organization settings saved!');
+}
+
+function updateOpenCodeStatus() {
+  const statusEl = document.getElementById('opencodeStatus');
+  if (!statusEl) return;
+  
+  const health = availableConnectors.commands || {};
+  const opencodeCmd = document.getElementById('orgOpenCodeCmd')?.value || 'opencode';
+  const isAvailable = health[opencodeCmd];
+  
+  statusEl.innerHTML = `
+    <span class="connector-status ${isAvailable ? 'available' : 'unavailable'}">
+      ${isAvailable ? '✓ OpenCode CLI is available' : '✗ OpenCode CLI not found in PATH'}
+    </span>
+  `;
 }
 
 async function loadIntegrationStatus() {
@@ -139,6 +165,7 @@ async function loadIntegrationStatus() {
     const health = await call('/api/integrations/health');
     availableConnectors = { ...status.commands, ...health };
     setOut('integrationStatusOut', { status, health });
+    updateOpenCodeStatus();
   } catch (e) {
     console.error('Failed to load integration status:', e);
   }

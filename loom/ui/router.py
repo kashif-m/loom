@@ -99,6 +99,11 @@ class OrganizationRequest(BaseModel):
     name: str
     litellm_base_url: str | None = None
     litellm_api_key: str | None = None
+    litellm_default_model: str = "open-large"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
+    opencode_enabled: bool = False
+    opencode_cmd: str = "opencode"
 
 
 def _csrf_dependency(settings):
@@ -188,6 +193,11 @@ def build_ui_router(container) -> APIRouter:
             name=payload.name,
             litellm_base_url=payload.litellm_base_url,
             litellm_api_key=payload.litellm_api_key,
+            litellm_default_model=payload.litellm_default_model,
+            openai_api_key=payload.openai_api_key,
+            openai_model=payload.openai_model,
+            opencode_enabled=payload.opencode_enabled,
+            opencode_cmd=payload.opencode_cmd,
         )
         container.repositories.organization.upsert(org)
         return org.model_dump(mode="json")

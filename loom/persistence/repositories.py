@@ -388,6 +388,11 @@ class OrganizationRepository:
                 name=row.name,
                 litellm_base_url=row.litellm_base_url,
                 litellm_api_key=row.litellm_api_key,
+                litellm_default_model=row.litellm_default_model,
+                openai_api_key=row.openai_api_key,
+                openai_model=row.openai_model,
+                opencode_enabled=row.opencode_enabled,
+                opencode_cmd=row.opencode_cmd,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
@@ -399,6 +404,11 @@ class OrganizationRepository:
                 row.name = org.name
                 row.litellm_base_url = org.litellm_base_url
                 row.litellm_api_key = org.litellm_api_key
+                row.litellm_default_model = org.litellm_default_model
+                row.openai_api_key = org.openai_api_key
+                row.openai_model = org.openai_model
+                row.opencode_enabled = org.opencode_enabled
+                row.opencode_cmd = org.opencode_cmd
             else:
                 session.add(
                     OrganizationRow(
@@ -406,6 +416,11 @@ class OrganizationRepository:
                         name=org.name,
                         litellm_base_url=org.litellm_base_url,
                         litellm_api_key=org.litellm_api_key,
+                        litellm_default_model=org.litellm_default_model,
+                        openai_api_key=org.openai_api_key,
+                        openai_model=org.openai_model,
+                        opencode_enabled=org.opencode_enabled,
+                        opencode_cmd=org.opencode_cmd,
                     )
                 )
             session.commit()

@@ -66,7 +66,12 @@
               <label>Organization Name</label>
               <input id="orgName" placeholder="My Organization" />
             </div>
-            <h4>LiteLLM Configuration</h4>
+            <button id="saveOrganization">Save Settings</button>
+          </div>
+          
+          <div class="card">
+            <h3>LiteLLM Configuration</h3>
+            <p class="hint">LiteLLM provides unified access to 100+ LLM providers. Configure your proxy endpoint here.</p>
             <div class="form-group">
               <label>Base URL</label>
               <input id="orgLiteLLMUrl" placeholder="http://localhost:4000" />
@@ -75,11 +80,45 @@
               <label>API Key</label>
               <input id="orgLiteLLMApiKey" type="password" placeholder="sk-..." />
             </div>
-            <button id="saveOrganization">Save Settings</button>
+            <div class="form-group">
+              <label>Default Model</label>
+              <input id="orgLiteLLMModel" placeholder="open-large" />
+              <span class="hint">Examples: open-large, gpt-4, claude-3-opus, etc.</span>
+            </div>
           </div>
+
+          <div class="card">
+            <h3>OpenAI Direct Configuration</h3>
+            <p class="hint">Direct OpenAI API access (alternative to LiteLLM)</p>
+            <div class="form-group">
+              <label>API Key</label>
+              <input id="orgOpenAIApiKey" type="password" placeholder="sk-..." />
+            </div>
+            <div class="form-group">
+              <label>Model</label>
+              <input id="orgOpenAIModel" placeholder="gpt-4.1-mini" />
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>OpenCode Connector</h3>
+            <p class="hint">OpenCode CLI for repository context and code operations</p>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input id="orgOpenCodeEnabled" type="checkbox" />
+                Enable OpenCode
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Command</label>
+              <input id="orgOpenCodeCmd" placeholder="opencode" />
+            </div>
+            <div id="opencodeStatus" class="connector-status"></div>
+          </div>
+
           <div class="card">
             <h3>Integration Status</h3>
-            <button id="loadIntegrationStatus">Check Status</button>
+            <button id="loadIntegrationStatus">Check All Integrations</button>
             <pre id="integrationStatusOut"></pre>
           </div>
         </section>

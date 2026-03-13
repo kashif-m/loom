@@ -16,6 +16,11 @@ class OrganizationRow(Base):
     name: Mapped[str] = mapped_column(String(256), default="My Organization")
     litellm_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     litellm_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    litellm_default_model: Mapped[str] = mapped_column(String(128), default="open-large")
+    openai_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    openai_model: Mapped[str] = mapped_column(String(128), default="gpt-4.1-mini")
+    opencode_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    opencode_cmd: Mapped[str] = mapped_column(String(128), default="opencode")
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
