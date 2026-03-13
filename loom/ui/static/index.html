@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Loom Control Plane</title>
+  <link rel="stylesheet" href="/ui/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Loom Control Plane</h1>
+    <div class="row">
+      <label>Auth Mode
+        <select id="authMode">
+          <option value="none">none</option>
+          <option value="token">token</option>
+        </select>
+      </label>
+      <label>Bearer Token
+        <input id="bearerToken" placeholder="Bearer token" />
+      </label>
+      <label>Role (local)
+        <select id="roleHeader">
+          <option>admin</option>
+          <option>operator</option>
+          <option>viewer</option>
+        </select>
+      </label>
+      <button id="refreshAll">Refresh All</button>
+      <button id="loadDocsPack">Load Docs Pack</button>
+      <button id="integrationStatus">Integration Status</button>
+      <button id="whoAmI">Who Am I</button>
+    </div>
+    <div id="statusBar"></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Workflow Lifecycle</h2>
+      <textarea id="workflowMarkdown" rows="10" placeholder="Paste workflow markdown"></textarea>
+      <div class="row">
+        <input id="wfId" placeholder="workflow_id" />
+        <input id="wfVersion" type="number" value="1" />
+        <input id="wfTitle" placeholder="title" />
+        <input id="wfDomain" value="custom" />
+        <input id="wfIntent" placeholder="intent_group" />
+        <label><input id="wfActivate" type="checkbox" checked /> activate</label>
+        <button id="validateWorkflow">Validate</button>
+        <button id="publishWorkflow">Publish</button>
+      </div>
+      <div class="row">
+        <input id="wfVersionActionId" placeholder="workflow_id" />
+        <input id="wfVersionAction" type="number" placeholder="version" />
+        <button id="activateWorkflow">Activate</button>
+        <button id="deprecateWorkflow">Deprecate</button>
+        <button id="archiveWorkflow">Archive</button>
+        <button id="rollbackWorkflow">Rollback</button>
+      </div>
+      <div class="row">
+        <input id="diffWorkflowId" placeholder="workflow_id" />
+        <input id="diffFrom" type="number" placeholder="from" />
+        <input id="diffTo" type="number" placeholder="to" />
+        <button id="loadDiff">Load Diff</button>
+      </div>
+      <pre id="workflowsOut"></pre>
+    </section>
+
+    <section>
+      <h2>Agent Builder</h2>
+      <textarea id="agentBuilderJson" rows="12" placeholder='{"role": {...}, "capabilities": [...], "policies": [...], "prompt_profile": {...}}'></textarea>
+      <div class="row">
+        <button id="buildAgent">Build Agent Bundle</button>
+        <input id="compatRoleId" placeholder="role_id" />
+        <button id="checkCompat">Check Compatibility</button>
+      </div>
+      <pre id="rolesOut"></pre>
+    </section>
+
+    <section>
+      <h2>Entity CRUD</h2>
+      <div class="grid3">
+        <div>
+          <h3>Capabilities</h3>
+          <textarea id="capJson" rows="6" placeholder='{"capability_id":"custom_cap","description":"desc","connector_binding":"none","validation_requirements":[],"status":"active"}'></textarea>
+          <button id="upsertCap">Upsert</button>
+          <pre id="capsOut"></pre>
+        </div>
+        <div>
+          <h3>Policies</h3>
+          <textarea id="policyJson" rows="6" placeholder='{"policy_id":"custom_policy","description":"desc","scope":"global","enforcement":"block","rules":{},"status":"active"}'></textarea>
+          <button id="upsertPolicy">Upsert</button>
+          <pre id="policiesOut"></pre>
+        </div>
+        <div>
+          <h3>Prompts</h3>
+          <textarea id="promptJson" rows="6" placeholder='{"profile_id":"custom_prompt","version":1,"domain_pack":"custom","system_prompt":"You are helpful","status":"active"}'></textarea>
+          <button id="upsertPrompt">Upsert</button>
+          <pre id="promptsOut"></pre>
+        </div>
+      </div>
+      <div class="row">
+        <textarea id="roleJson" rows="4" placeholder='{"role_id":"custom_agent","title":"Custom Agent","domain_pack":"custom","capability_ids":[],"policy_ids":[],"memory_visibility":[],"status":"active"}'></textarea>
+        <button id="upsertRole">Upsert Role</button>
+        <input id="deleteRoleId" placeholder="role_id to retire" />
+        <button id="deleteRole">Retire Role</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>LiteLLM Model Routing</h2>
+      <div class="grid3">
+        <div>
+          <h3>Provider</h3>
+          <textarea id="modelProviderJson" rows="6" placeholder='{"provider_id":"litellm_team","provider_type":"litellm","base_url":"http://localhost:4000","api_key":"sk-...","extra_headers":{},"status":"active"}'></textarea>
+          <div class="row">
+            <button id="upsertModelProvider">Upsert Provider</button>
+            <input id="deleteModelProviderId" placeholder="provider_id" />
+            <button id="deleteModelProvider">Delete Provider</button>
+          </div>
+        </div>
+        <div>
+          <h3>Model</h3>
+          <textarea id="modelJson" rows="6" placeholder='{"model_id":"docs_fast","provider_id":"litellm_team","model_name":"openai/gpt-4.1-mini","max_tokens":1200,"temperature":0.2,"status":"active"}'></textarea>
+          <div class="row">
+            <button id="upsertModel">Upsert Model</button>
+            <input id="deleteModelId" placeholder="model_id" />
+            <button id="deleteModel">Delete Model</button>
+          </div>
+        </div>
+        <div>
+          <h3>Service Binding</h3>
+          <textarea id="serviceModelJson" rows="6" placeholder='{"service_id":"step_execution","model_id":"docs_fast","status":"active"}'></textarea>
+          <div class="row">
+            <button id="upsertServiceModel">Upsert Binding</button>
+            <input id="deleteServiceModelId" placeholder="service_id" />
+            <button id="deleteServiceModel">Delete Binding</button>
+          </div>
+          <div class="row">
+            <input id="resolveServiceId" value="step_execution" />
+            <button id="resolveServiceModel">Resolve Route</button>
+          </div>
+        </div>
+      </div>
+      <pre id="modelsOut"></pre>
+    </section>
+
+    <section>
+      <h2>Task Run Console</h2>
+      <div class="row">
+        <input id="taskRequest" placeholder="run my custom local workflow for topic X" />
+        <input id="taskDomain" value="custom" />
+        <label><input id="taskAsync" type="checkbox" /> async</label>
+        <button id="intakeTask">Intake</button>
+      </div>
+      <div class="row">
+        <input id="taskId" placeholder="task_id" />
+        <button id="runTask">Run Task</button>
+        <button id="retryTask">Retry</button>
+        <button id="traceTask">Trace</button>
+        <button id="streamTask">Stream Events</button>
+      </div>
+      <div class="row">
+        <input id="markReason" placeholder="manual reason" />
+        <button id="markBlocked">Mark Blocked</button>
+        <button id="markFailed">Mark Failed</button>
+      </div>
+      <pre id="tasksOut"></pre>
+    </section>
+
+    <section>
+      <h2>Memory + Topology + Audit + Incidents</h2>
+      <div class="row">
+        <textarea id="memoryQueryJson" rows="3" placeholder='{"domain_pack":"docs","workflow_id":"docs_task_authoring","workflow_version":1,"role":"any","memory_type":"episodic","active_only":true}'></textarea>
+        <button id="queryMemory">Query Memory</button>
+        <button id="invalidateMemory">Invalidate Memory</button>
+      </div>
+      <div class="row">
+        <input id="auditTaskId" placeholder="task_id filter" />
+        <input id="auditEventType" placeholder="event_type filter" />
+        <button id="loadAudit">Load Audit</button>
+        <button id="loadTopology">Load Topology</button>
+      </div>
+      <div class="row">
+        <textarea id="incidentJson" rows="3" placeholder='{"severity":"high","title":"Sample incident","summary":"Issue summary"}'></textarea>
+        <button id="createIncident">Create Incident</button>
+        <button id="listIncidents">List Incidents</button>
+        <button id="exportIncidents">Export Incidents</button>
+      </div>
+      <pre id="integrationOut"></pre>
+    </section>
+
+    <section>
+      <h2>Schedules CRUD</h2>
+      <textarea id="scheduleJson" rows="6" placeholder='{"schedule_id":"custom_schedule","cron":"*/30 * * * *","action_type":"maintenance","target":"topology_regeneration","payload":{},"enabled":true}'></textarea>
+      <div class="row">
+        <button id="upsertSchedule">Upsert Schedule</button>
+        <input id="deleteScheduleId" placeholder="schedule_id" />
+        <button id="deleteSchedule">Delete Schedule</button>
+      </div>
+      <pre id="schedulesOut"></pre>
+    </section>
+  </main>
+
+  <script src="/ui/static/app.js"></script>
+</body>
+</html>

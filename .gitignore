@@ -1,0 +1,6 @@
+/venv
+.*cache
+*egg-info
+*.db
+*__pycache__
+*alembic

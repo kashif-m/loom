@@ -1,0 +1,29 @@
+version: '3.9'
+services:
+  loom:
+    build: ..
+    ports:
+      - "8000:8000"
+    environment:
+      LOOM_ENV: dev
+      LOOM_DATABASE_URL: sqlite:///./data/loom.db
+      LOOM_API_AUTH_ENABLED: "false"
+      LOOM_UI_AUTH_MODE: none
+      LOOM_INTEGRATION_PROFILE: local
+    volumes:
+      - ../:/app
+    profiles: ["minimal", "full"]
+
+  graphiti-mock:
+    image: python:3.11-slim
+    command: ["python", "-m", "http.server", "8081"]
+    ports:
+      - "8081:8081"
+    profiles: ["full"]
+
+  tracing-mock:
+    image: python:3.11-slim
+    command: ["python", "-m", "http.server", "8082"]
+    ports:
+      - "8082:8082"
+    profiles: ["full"]
