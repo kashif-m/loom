@@ -47,7 +47,12 @@
             export LOOM_INTEGRATION_PROFILE=local
             export LOOM_LITELLM_ENABLED=false
             export LOOM_LITELLM_DEFAULT_MODEL="openai/gpt-4.1-mini"
+            if [ ! -f .venv/bin/activate ]; then
+              python -m venv .venv
+            fi
+            . .venv/bin/activate
             echo "Loom dev shell ready"
+            echo "Virtualenv: .venv (activated)"
             echo "Try: pip install -e '.[dev,integrations]' && make bootstrap && make run"
             if command -v git >/dev/null 2>&1; then echo "git: ok"; fi
             if command -v gh >/dev/null 2>&1; then echo "gh: ok"; fi

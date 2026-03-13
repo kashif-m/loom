@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f .env.local ] && [ "${1:-}" != "--force" ]; then
+  echo ".env.local already exists (use --force to overwrite)"
+  exit 0
+fi
+
 cat > .env.local <<'ENV'
 LOOM_ENV=dev
 LOOM_DATABASE_URL=sqlite:///./loom.db
 LOOM_API_AUTH_ENABLED=false
 LOOM_UI_AUTH_MODE=none
 LOOM_INTEGRATION_PROFILE=local
+LOOM_OPENCLAW_REPO_URL=https://github.com/openclaw/openclaw.git
+LOOM_OPENCODE_REPO_URL=https://github.com/sst/opencode.git
+LOOM_GRAPHITI_REPO_URL=https://github.com/getzep/graphiti.git
 LOOM_GRAPHITI_ENABLED=false
 LOOM_LITELLM_ENABLED=false
 LOOM_LITELLM_BASE_URL=

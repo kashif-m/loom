@@ -1,4 +1,7 @@
 /venv
+/.venv
+/.tools
+.env*
 .*cache
 *egg-info
 *.db

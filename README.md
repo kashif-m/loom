@@ -36,6 +36,7 @@ Open:
 
 ```bash
 nix develop
+# .venv is auto-created/activated by flake shellHook
 pip install -e '.[dev,integrations]'
 make bootstrap
 make run
@@ -105,6 +106,7 @@ Enable each via env vars in `loom/app/config.py`.
 ## Useful scripts
 
 - `./scripts/init_env_local.sh`
+- `./scripts/init_env_local.sh --force` (regenerate `.env.local`)
 - `./scripts/bootstrap_local_stack.sh`
 - `./scripts/verify_connectors.sh`
 - `./scripts/bootstrap_tools.sh`
