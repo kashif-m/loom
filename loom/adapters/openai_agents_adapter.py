@@ -36,10 +36,21 @@ class OpenAIAgentsAdapter:
         selected_api_key = api_key or self.api_key
 
         if self._openai_cls is None or not selected_api_key:
+            if self._openai_cls is None:
+                return {
+                    "ok": False,
+                    "error_code": "MODEL_SDK_MISSING",
+                    "error": "openai package is not installed in this runtime",
+                    "output": "",
+                    "model": selected_model,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                }
             return {
-                "ok": True,
-                "output": f"mocked-model-output: {user_prompt[:120]}",
-                "model": "mock",
+                "ok": False,
+                "error_code": "MODEL_API_KEY_MISSING",
+                "error": "model route resolved without API key",
+                "output": "",
+                "model": selected_model,
                 "usage": {"input_tokens": 0, "output_tokens": 0},
             }
 
@@ -75,10 +86,16 @@ class OpenAIAgentsAdapter:
                 "usage": usage_payload,
             }
         except Exception as exc:
+            text = str(exc)
+            code = "MODEL_PROVIDER_ERROR"
+            lowered = text.lower()
+            if "connection" in lowered or "timeout" in lowered or "dns" in lowered:
+                code = "MODEL_PROVIDER_UNREACHABLE"
             return {
                 "ok": False,
-                "error": str(exc),
-                "output": f"model-error-fallback: {user_prompt[:120]}",
+                "error_code": code,
+                "error": text,
+                "output": "",
                 "model": selected_model,
                 "usage": {"input_tokens": 0, "output_tokens": 0},
             }

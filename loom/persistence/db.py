@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, UniqueConstraint, create_engine
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, UniqueConstraint, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.sql import func
 
@@ -17,6 +17,7 @@ class OrganizationRow(Base):
     litellm_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     litellm_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
     litellm_default_model: Mapped[str] = mapped_column(String(128), default="open-large")
+    litellm_start_cmd: Mapped[str | None] = mapped_column(String(512), nullable=True)
     openai_api_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
     openai_model: Mapped[str] = mapped_column(String(128), default="gpt-4.1-mini")
     opencode_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -31,6 +32,7 @@ class TaskRow(Base):
     __tablename__ = "tasks"
 
     task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
     raw_request: Mapped[str] = mapped_column(Text)
     normalized_request: Mapped[str | None] = mapped_column(Text, nullable=True)
     workflow_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -107,5 +109,23 @@ def init_db(database_url: str):
         pool_pre_ping=True,
     )
     Base.metadata.create_all(engine)
+    # Lightweight compatibility migration for existing local SQLite DBs.
+    # New installs already get this column via `TaskRow`.
+    if database_url.startswith("sqlite"):
+        with engine.begin() as conn:
+            org_columns = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(organizations)")).fetchall()
+            }
+            if "litellm_start_cmd" not in org_columns:
+                conn.execute(text("ALTER TABLE organizations ADD COLUMN litellm_start_cmd VARCHAR(512)"))
+            columns = {
+                row[1]  # PRAGMA table_info(tasks) -> (cid, name, type, notnull, dflt_value, pk)
+                for row in conn.execute(text("PRAGMA table_info(tasks)")).fetchall()
+            }
+            if "organization_id" not in columns:
+                conn.execute(text("ALTER TABLE tasks ADD COLUMN organization_id VARCHAR(64) DEFAULT 'default'"))
+                conn.execute(text("UPDATE tasks SET organization_id='default' WHERE organization_id IS NULL"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_organization_id ON tasks (organization_id)"))
     session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
     return session_factory

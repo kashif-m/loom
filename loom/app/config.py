@@ -34,6 +34,8 @@ class Settings:
     litellm_base_url: str = ""
     litellm_api_key: str = ""
     litellm_default_model: str = "openai/gpt-4.1-mini"
+    litellm_start_cmd: str = ""
+    graphiti_start_cmd: str = ""
 
     langsmith_enabled: bool = False
     langsmith_api_key: str = ""
@@ -88,6 +90,8 @@ def load_settings() -> Settings:
         litellm_base_url=os.getenv("LOOM_LITELLM_BASE_URL", ""),
         litellm_api_key=os.getenv("LOOM_LITELLM_API_KEY", ""),
         litellm_default_model=os.getenv("LOOM_LITELLM_DEFAULT_MODEL", "openai/gpt-4.1-mini"),
+        litellm_start_cmd=os.getenv("LOOM_LITELLM_START_CMD", ""),
+        graphiti_start_cmd=os.getenv("LOOM_GRAPHITI_START_CMD", ""),
         langsmith_enabled=_getenv_bool("LOOM_LANGSMITH_ENABLED"),
         langsmith_api_key=os.getenv("LOOM_LANGSMITH_API_KEY", ""),
         langsmith_project=os.getenv("LOOM_LANGSMITH_PROJECT", "loom"),
@@ -164,6 +168,8 @@ def sanitized_runtime_config(settings: Settings) -> dict[str, object]:
         "litellm_base_url": settings.litellm_base_url,
         "litellm_default_model": settings.litellm_default_model,
         "litellm_enabled": settings.litellm_enabled,
+        "litellm_start_cmd_configured": bool(settings.litellm_start_cmd),
+        "graphiti_start_cmd_configured": bool(settings.graphiti_start_cmd),
         "langsmith_enabled": settings.langsmith_enabled,
         "openclaw_enabled": settings.openclaw_enabled,
         "api_auth_enabled": settings.api_auth_enabled,

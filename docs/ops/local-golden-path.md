@@ -1,8 +1,8 @@
 # Local Golden Path
 
 1. `nix develop` or install python deps locally.
-2. Run `make bootstrap`.
-3. Run `make run`.
+2. Run `just bootstrap`.
+3. Run `just run`.
 4. Open `http://127.0.0.1:8000/ui`.
 5. Load Docs Pack from GUI.
 6. Build an agent bundle from Agent Builder panel.

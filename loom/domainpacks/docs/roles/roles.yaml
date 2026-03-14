@@ -2,21 +2,21 @@ roles:
   - role_id: docs_ops
     title: Docs Ops
     domain_pack: docs
-    capability_ids: [repo_read, repo_write, pr_create, pr_update, context_build, validation]
+    capability_ids: [repo_read, repo_write, pr_create, pr_read, pr_update, context_build, review_analysis, validation]
     policy_ids: [raise_pr_only]
     memory_visibility: [docs]
     status: active
   - role_id: development
     title: Development
     domain_pack: docs
-    capability_ids: [repo_read, repo_write, content_update]
+    capability_ids: [repo_read, repo_write, context_build, content_update]
     policy_ids: []
     memory_visibility: [docs]
     status: active
   - role_id: technical_writer
     title: Technical Writer
     domain_pack: docs
-    capability_ids: [repo_read, markdown_write, content_update]
+    capability_ids: [repo_read, repo_write, markdown_write, content_update]
     policy_ids: []
     memory_visibility: [docs]
     status: active
@@ -37,14 +37,14 @@ roles:
   - role_id: devex
     title: DevEx
     domain_pack: docs
-    capability_ids: [developer_review, build_check, style_check]
+    capability_ids: [developer_review, build_check, link_check, style_check]
     policy_ids: []
     memory_visibility: [docs]
     status: active
   - role_id: qa
     title: QA
     domain_pack: docs
-    capability_ids: [validation, link_check, style_check]
+    capability_ids: [validation, build_check, link_check, style_check]
     policy_ids: []
     memory_visibility: [docs]
     status: active

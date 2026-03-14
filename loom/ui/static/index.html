@@ -3,32 +3,54 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Loom - Multi-agent workflow orchestration control plane" />
   <title>Loom Control Plane</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128736;</text></svg>" />
+  
+  <!-- Preconnect to API endpoints for faster requests -->
+  <link rel="preconnect" href="/api" />
+  
+  <!-- Load CSS normally (CSP compliant) -->
   <link rel="stylesheet" href="/ui/static/styles.css" />
 </head>
 <body>
+  <a href="#viewContainer" class="skip-link">Skip to main content</a>
   <div class="app-container">
     <nav class="sidebar">
       <div class="sidebar-header">
         <h1>Loom</h1>
         <span class="version">Control Plane</span>
       </div>
-      <ul class="nav-menu">
-        <li class="nav-item active" data-view="organization">
-          <span class="nav-icon">&#127970;</span>
-          <span class="nav-label">Organization</span>
+      <ul class="nav-menu" role="tablist">
+        <li role="presentation">
+          <button class="nav-item active" data-view="organization" role="tab" aria-selected="true" aria-controls="view-organization">
+            <span class="nav-icon" aria-hidden="true">&#127970;</span>
+            <span class="nav-label">Organization</span>
+          </button>
         </li>
-        <li class="nav-item" data-view="agents">
-          <span class="nav-icon">&#128100;</span>
-          <span class="nav-label">Agents</span>
+        <li role="presentation">
+          <button class="nav-item" data-view="agents" role="tab" aria-selected="false" aria-controls="view-agents">
+            <span class="nav-icon" aria-hidden="true">&#128100;</span>
+            <span class="nav-label">Agents</span>
+          </button>
         </li>
-        <li class="nav-item" data-view="workflows">
-          <span class="nav-icon">&#128260;</span>
-          <span class="nav-label">Workflows</span>
+        <li role="presentation">
+          <button class="nav-item" data-view="workflows" role="tab" aria-selected="false" aria-controls="view-workflows">
+            <span class="nav-icon" aria-hidden="true">&#128260;</span>
+            <span class="nav-label">Workflows</span>
+          </button>
         </li>
-        <li class="nav-item" data-view="tasks">
-          <span class="nav-icon">&#9654;</span>
-          <span class="nav-label">Tasks</span>
+        <li role="presentation">
+          <button class="nav-item" data-view="designer" role="tab" aria-selected="false" aria-controls="view-designer">
+            <span class="nav-icon" aria-hidden="true">&#129513;</span>
+            <span class="nav-label">Designer</span>
+          </button>
+        </li>
+        <li role="presentation">
+          <button class="nav-item" data-view="tasks" role="tab" aria-selected="false" aria-controls="view-tasks">
+            <span class="nav-icon" aria-hidden="true">&#9654;</span>
+            <span class="nav-label">Tasks</span>
+          </button>
         </li>
       </ul>
       <div class="sidebar-footer">
@@ -36,54 +58,72 @@
       </div>
     </nav>
 
+    <button class="mobile-menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+      <span aria-hidden="true">&#9776;</span>
+    </button>
     <main class="main-content">
       <header class="top-bar">
         <div class="top-bar-left">
           <h2 id="viewTitle">Organization Settings</h2>
         </div>
         <div class="top-bar-right">
-          <label>Auth Mode
-            <select id="authMode">
-              <option value="none">none</option>
-              <option value="token">token</option>
-            </select>
-          </label>
-          <input id="bearerToken" placeholder="Bearer token" type="password" />
-          <select id="roleHeader">
-            <option>admin</option>
-            <option>operator</option>
-            <option>viewer</option>
+          <button id="themeToggle" class="secondary" aria-label="Toggle dark/light theme">Theme</button>
+          <label for="authMode">Auth Mode</label>
+          <select id="authMode" aria-describedby="authModeHint">
+            <option value="none">none</option>
+            <option value="token">token</option>
+          </select>
+          <span id="authModeHint" class="sr-only">Select authentication mode</span>
+          <input id="bearerToken" placeholder="Bearer token" type="password" aria-label="Bearer token" autocomplete="off" />
+          <label for="roleHeader" class="sr-only">Role</label>
+          <select id="roleHeader" aria-label="User role">
+            <option value="admin">admin</option>
+            <option value="operator">operator</option>
+            <option value="viewer">viewer</option>
           </select>
           <button id="refreshAll">Refresh</button>
         </div>
       </header>
 
-      <div id="viewContainer">
+      <div id="notifications" class="notifications" role="status" aria-live="polite"></div>
+      <div id="viewContainer" role="main" tabindex="-1">
         <section id="view-organization" class="view active">
           <div class="card">
             <h3>Organization Settings</h3>
+            <div class="row org-selector">
+              <select id="orgSelect" class="org-select"></select>
+              <button id="orgLoad" class="secondary">Load</button>
+              <input id="newOrgId" placeholder="new_org_id" class="org-input" />
+              <button id="orgCreate">Create</button>
+            </div>
+            <p class="hint">All task intake and routing uses the selected organization.</p>
             <div class="form-group">
-              <label>Organization Name</label>
-              <input id="orgName" placeholder="My Organization" />
+              <label for="orgName">Organization Name</label>
+              <input id="orgName" placeholder="My Organization" autocomplete="organization" />
             </div>
             <button id="saveOrganization">Save Settings</button>
           </div>
           
           <div class="card">
             <h3>LiteLLM Configuration</h3>
-            <p class="hint">LiteLLM provides unified access to 100+ LLM providers. Configure your proxy endpoint here.</p>
+            <p class="hint">Configure your LiteLLM proxy for unified access to 100+ LLM providers.</p>
             <div class="form-group">
-              <label>Base URL</label>
-              <input id="orgLiteLLMUrl" placeholder="http://localhost:4000" />
+              <label for="orgLiteLLMUrl">Base URL</label>
+              <input id="orgLiteLLMUrl" placeholder="http://localhost:4000" autocomplete="url" />
             </div>
             <div class="form-group">
-              <label>API Key</label>
-              <input id="orgLiteLLMApiKey" type="password" placeholder="sk-..." />
+              <label for="orgLiteLLMApiKey">API Key</label>
+              <input id="orgLiteLLMApiKey" type="password" placeholder="sk-..." autocomplete="off" />
             </div>
             <div class="form-group">
-              <label>Default Model</label>
+              <label for="orgLiteLLMModel">Default Model</label>
               <input id="orgLiteLLMModel" placeholder="open-large" />
               <span class="hint">Examples: open-large, gpt-4, claude-3-opus, etc.</span>
+            </div>
+            <div class="form-group">
+              <label for="orgLiteLLMStartCmd">Start Command (optional)</label>
+              <input id="orgLiteLLMStartCmd" placeholder="docker compose up -d litellm" autocomplete="off" />
+              <span class="hint">Only needed for self-hosted LiteLLM. Leave empty for hosted LiteLLM.</span>
             </div>
           </div>
 
@@ -91,11 +131,11 @@
             <h3>OpenAI Direct Configuration</h3>
             <p class="hint">Direct OpenAI API access (alternative to LiteLLM)</p>
             <div class="form-group">
-              <label>API Key</label>
-              <input id="orgOpenAIApiKey" type="password" placeholder="sk-..." />
+              <label for="orgOpenAIApiKey">API Key</label>
+              <input id="orgOpenAIApiKey" type="password" placeholder="sk-..." autocomplete="off" />
             </div>
             <div class="form-group">
-              <label>Model</label>
+              <label for="orgOpenAIModel">Model</label>
               <input id="orgOpenAIModel" placeholder="gpt-4.1-mini" />
             </div>
           </div>
@@ -110,16 +150,46 @@
               </label>
             </div>
             <div class="form-group">
-              <label>Command</label>
-              <input id="orgOpenCodeCmd" placeholder="opencode" />
+              <label for="orgOpenCodeCmd">Command</label>
+              <input id="orgOpenCodeCmd" placeholder="opencode" autocomplete="off" />
             </div>
             <div id="opencodeStatus" class="connector-status"></div>
+          </div>
+
+          <div class="card">
+            <h3>Organization Runtime</h3>
+            <p class="hint">Start the runtime to activate agents and workflows.</p>
+            <div class="row runtime-actions">
+              <button id="runOrganization">Run</button>
+              <button id="refreshRuntime" class="secondary">Refresh</button>
+              <button id="stopOrganization" class="danger">Stop</button>
+            </div>
+            <div id="runtimeSummary" class="runtime-summary"></div>
+            <pre id="runtimeOut"></pre>
           </div>
 
           <div class="card">
             <h3>Integration Status</h3>
             <button id="loadIntegrationStatus">Check All Integrations</button>
             <pre id="integrationStatusOut"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Bundle Configuration</h3>
+            <p class="hint">Apply or export organization configuration as YAML.</p>
+            <textarea id="bundleYaml" rows="8" placeholder="# Paste YAML configuration here
+organization:
+  name: My Organization
+workflows:
+  - workflow_id: example
+    version: 1
+    activate: true"></textarea>
+            <div class="row bundle-actions">
+              <button id="applyBundle">Apply</button>
+              <input id="bundleExportDomain" placeholder="domain_pack (optional)" class="bundle-input" />
+              <button id="exportBundle" class="secondary">Export</button>
+            </div>
+            <pre id="bundleOut"></pre>
           </div>
         </section>
 
@@ -150,27 +220,34 @@
                 <div id="wizard-step-1" class="wizard-panel active">
                   <h3>Basic Information</h3>
                   <div class="form-group">
-                    <label>Agent ID</label>
-                    <input id="agentId" placeholder="my_agent" />
+                    <label for="agentId">Agent ID</label>
+                    <input id="agentId" placeholder="my_agent" autocomplete="off" />
                   </div>
                   <div class="form-group">
-                    <label>Title</label>
+                    <label for="agentTitle">Title</label>
                     <input id="agentTitle" placeholder="My Agent" />
                   </div>
                   <div class="form-group">
-                    <label>Domain Pack</label>
+                    <label for="agentDomainPack">Domain Pack</label>
                     <input id="agentDomainPack" value="custom" />
+                  </div>
+                  <div class="form-group">
+                    <label for="agentPreferredModel">Preferred Model (optional)</label>
+                    <select id="agentPreferredModel">
+                      <option value="">(use service/org default)</option>
+                    </select>
                   </div>
                 </div>
 
                 <div id="wizard-step-2" class="wizard-panel">
                   <h3>Select Capabilities</h3>
                   <div id="capabilitiesSelector" class="checkbox-grid"></div>
-                  <div class="form-group" style="margin-top: 16px;">
-                    <label>Or create new capability:</label>
+                  <div class="form-group wizard-form-group">
+                    <span id="newCapLabel">Or create new capability:</span>
                     <div class="row">
-                      <input id="newCapId" placeholder="capability_id" />
-                      <input id="newCapDesc" placeholder="description" />
+                      <input id="newCapId" placeholder="capability_id" aria-labelledby="newCapLabel" />
+                      <input id="newCapDesc" placeholder="description" aria-labelledby="newCapLabel" />
+                      <label for="newCapConnector" class="sr-only">Connector</label>
                       <select id="newCapConnector">
                         <option value="none">none</option>
                         <option value="opencode">opencode</option>
@@ -243,15 +320,15 @@ Description of the step.
 ## Completion
 All steps completed successfully.
 "></textarea>
-                <div class="row" style="margin-top: 8px;">
-                  <input id="wfId" placeholder="workflow_id" />
-                  <input id="wfVersion" type="number" value="1" min="1" />
-                  <input id="wfTitle" placeholder="title" />
-                  <input id="wfDomain" value="custom" />
-                  <input id="wfIntent" placeholder="intent_group" />
+                <div class="row workflow-input-row">
+                  <input id="wfId" placeholder="workflow_id" aria-label="Workflow ID" />
+                  <input id="wfVersion" type="number" value="1" min="1" aria-label="Version" />
+                  <input id="wfTitle" placeholder="title" aria-label="Title" />
+                  <input id="wfDomain" value="custom" aria-label="Domain" />
+                  <input id="wfIntent" placeholder="intent_group" aria-label="Intent group" />
                   <label><input id="wfActivate" type="checkbox" checked /> activate</label>
                 </div>
-                <div class="row" style="margin-top: 8px;">
+                <div class="row workflow-input-row">
                   <button id="validateWorkflow">Validate</button>
                   <button id="publishWorkflow">Publish</button>
                 </div>
@@ -263,16 +340,27 @@ All steps completed successfully.
               </div>
             </div>
 
-            <div class="card" style="margin-top: 16px;">
-              <h3>Workflow Lifecycle Actions</h3>
+            <div class="card workflow-action-card">
+              <h3>Workflow Lifecycle</h3>
               <div class="row">
-                <input id="wfVersionActionId" placeholder="workflow_id" />
-                <input id="wfVersionAction" type="number" placeholder="version" />
+                <input id="wfVersionActionId" placeholder="workflow_id" aria-label="Workflow ID" />
+                <input id="wfVersionAction" type="number" placeholder="version" aria-label="Version" />
                 <button id="activateWorkflow">Activate</button>
                 <button id="deprecateWorkflow">Deprecate</button>
                 <button id="archiveWorkflow" class="danger">Archive</button>
                 <button id="rollbackWorkflow" class="danger">Rollback</button>
               </div>
+            </div>
+
+            <div class="card diff-viewer-card">
+              <h3>Compare Versions</h3>
+              <div class="row">
+                <input id="wfDiffId" placeholder="workflow_id" aria-label="Workflow ID" />
+                <input id="wfDiffFrom" type="number" placeholder="from_version" aria-label="From version" />
+                <input id="wfDiffTo" type="number" placeholder="to_version" aria-label="To version" />
+                <button id="loadWorkflowDiff">Load Diff</button>
+              </div>
+              <pre id="workflowDiffOut"></pre>
             </div>
           </div>
         </section>
@@ -286,23 +374,28 @@ All steps completed successfully.
           <div id="tab-tasks-console" class="tab-content active">
             <div class="card">
               <h3>Task Intake</h3>
-              <div class="row">
-                <input id="taskRequest" style="flex:1" placeholder="Enter your request... e.g., 'run my custom workflow for topic X'" />
-                <input id="taskDomain" value="custom" style="width: 120px;" />
+              <div class="row task-input-row">
+                <input id="taskRequest" class="input-flex" placeholder="Enter your request..." aria-label="Task request" />
+                <input id="taskDomain" value="custom" class="input-small" aria-label="Domain" />
+                <input id="taskWorkflowId" class="input-medium" placeholder="workflow_id (optional)" aria-label="Workflow ID (optional)" />
+                <input id="taskWorkflowVersion" type="number" min="1" class="input-small" placeholder="version" aria-label="Version" />
+                <label><input id="taskFanout" type="checkbox" /> fanout</label>
                 <label><input id="taskAsync" type="checkbox" /> async</label>
                 <button id="intakeTask">Intake</button>
               </div>
             </div>
             <div class="card">
               <h3>Task Execution</h3>
-              <div class="row">
-                <input id="taskId" placeholder="task_id" style="flex:1" />
+              <div class="row task-id-row">
+                <input id="taskId" placeholder="task_id" class="input-flex" aria-label="Task ID" />
                 <button id="runTask">Run</button>
                 <button id="retryTask">Retry</button>
                 <button id="traceTask">Trace</button>
+                <button id="streamTask">Stream</button>
+                <button id="stopStreamTask" class="secondary">Stop Stream</button>
               </div>
-              <div class="row" style="margin-top: 8px;">
-                <input id="markReason" placeholder="reason" />
+              <div class="row task-action-row">
+                <input id="markReason" placeholder="reason" aria-label="Reason" />
                 <button id="markBlocked">Mark Blocked</button>
                 <button id="markFailed" class="danger">Mark Failed</button>
               </div>
@@ -310,6 +403,31 @@ All steps completed successfully.
             <div class="card">
               <h3>Result</h3>
               <pre id="tasksOut"></pre>
+            </div>
+            <div class="card">
+              <h3>Task Event Stream</h3>
+              <pre id="taskStreamOut"></pre>
+            </div>
+            <div class="card">
+              <h3>Memory Tools</h3>
+              <div class="row">
+                <input id="memoryDomainPack" placeholder="domain_pack" value="docs.orchestration" aria-label="Domain pack" />
+                <input id="memoryWorkflowId" placeholder="workflow_id" aria-label="Workflow ID" />
+                <input id="memoryWorkflowVersion" type="number" placeholder="workflow_version" aria-label="Workflow version" />
+                <input id="memoryRole" placeholder="role (default any)" value="any" aria-label="Role" />
+              </div>
+              <div class="row memory-action-row">
+                <select id="memoryType">
+                  <option value="episodic">episodic</option>
+                  <option value="working">working</option>
+                  <option value="semantic">semantic</option>
+                </select>
+                <label><input id="memoryActiveOnly" type="checkbox" checked /> active_only</label>
+                <label><input id="memoryHardInvalidate" type="checkbox" /> hard invalidate</label>
+                <button id="queryMemory">Query Memory</button>
+                <button id="invalidateMemory" class="secondary">Invalidate Memory</button>
+              </div>
+              <pre id="memoryOut"></pre>
             </div>
           </div>
 
@@ -320,10 +438,139 @@ All steps completed successfully.
             </div>
           </div>
         </section>
+
+        <section id="view-designer" class="view">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="designer-topology">Memory Topology</button>
+            <button class="tab-btn" data-tab="designer-org">Org Designer</button>
+          </div>
+
+          <div id="tab-designer-topology" class="tab-content active">
+            <div class="split-view">
+              <div class="split-pane">
+                <div class="card">
+                  <h3>Memory Groups</h3>
+                  <div class="row">
+                    <input id="topologyGroupId" placeholder="group_id" />
+                    <input id="topologyGroupTitle" placeholder="title" />
+                    <input id="topologyGroupOwner" placeholder="owner_role_id (optional)" />
+                    <button id="topologyAddGroup">Save Group</button>
+                  </div>
+                  <div id="topologyGroupsList"></div>
+                </div>
+
+                <div class="card">
+                  <h3>Memberships</h3>
+                  <div class="row">
+                    <input id="topologyMembershipGroup" placeholder="group_id" />
+                    <input id="topologyMembershipRole" placeholder="role_id" />
+                    <select id="topologyMembershipAccess">
+                      <option value="read_write">read_write</option>
+                      <option value="read">read</option>
+                      <option value="write">write</option>
+                    </select>
+                    <button id="topologyAddMembership">Save Membership</button>
+                  </div>
+                  <div id="topologyMembershipsList"></div>
+                </div>
+
+                <div class="card">
+                  <h3>Role Edges</h3>
+                  <div class="row">
+                    <input id="topologyParentRole" placeholder="parent_role_id" />
+                    <input id="topologyChildRole" placeholder="child_role_id" />
+                    <input id="topologySharedGroup" placeholder="shared_group_id (optional)" />
+                    <button id="topologyAddEdge">Save Edge</button>
+                  </div>
+                  <div id="topologyEdgesList"></div>
+                </div>
+              </div>
+              <div class="split-pane">
+                <div class="card">
+                  <div class="row">
+                    <h3>Topology Graph</h3>
+                    <button id="topologyRefreshGraph" class="secondary">Refresh</button>
+                  </div>
+                  <input id="topologyFilter" placeholder="filter roles/groups..." />
+                  <div id="topologyGraphCanvas" class="topology-graph-canvas"></div>
+                  <pre id="topologyValidationOut"></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-designer-org" class="tab-content">
+            <div class="row">
+              <button id="designerLoadDraft" class="secondary">Load Draft</button>
+              <button id="designerSaveDraft">Save Draft</button>
+              <button id="designerValidateDraft" class="secondary">Validate</button>
+              <button id="designerGenerateBundle">Generate Bundle</button>
+              <button id="designerApplyBundle" class="danger">Apply Bundle</button>
+            </div>
+            <div class="split-view">
+              <div class="split-pane">
+                <div class="card">
+                  <h3>Role Canvas</h3>
+                  <p class="hint">Drag roles to arrange topology. Click a role to inspect and edit details.</p>
+                  <div class="row">
+                    <input id="designerNewRoleId" placeholder="new_role_id" />
+                    <input id="designerNewRoleTitle" placeholder="title" />
+                    <input id="designerNewRoleDomain" placeholder="domain_pack" value="custom" />
+                    <button id="designerAddRole">Add Role</button>
+                  </div>
+                  <div id="designerCanvas" class="designer-canvas"></div>
+                </div>
+
+                <div class="card">
+                  <h3>Step Inspector</h3>
+                  <div class="row">
+                    <select id="designerWorkflowSelect"></select>
+                    <button id="designerAddWorkflow" class="secondary">Add Workflow</button>
+                    <button id="designerAddStep" class="secondary">Add Step</button>
+                  </div>
+                  <div id="designerStepsList"></div>
+                  <pre id="designerValidationOut"></pre>
+                </div>
+              </div>
+              <div class="split-pane">
+                <div class="card">
+                  <h3>Selected Role</h3>
+                  <div class="form-group">
+                    <label for="designerSelectedRoleId">Role ID</label>
+                    <input id="designerSelectedRoleId" readonly />
+                  </div>
+                  <div class="form-group">
+                    <label for="designerSelectedRoleTitle">Title</label>
+                    <input id="designerSelectedRoleTitle" />
+                  </div>
+                  <div class="form-group">
+                    <label for="designerSelectedRoleDomain">Domain Pack</label>
+                    <input id="designerSelectedRoleDomain" />
+                  </div>
+                  <div class="form-group">
+                    <label for="designerSelectedRoleCapabilities">Capability IDs (comma-separated)</label>
+                    <input id="designerSelectedRoleCapabilities" />
+                  </div>
+                  <button id="designerUpdateSelectedRole">Update Selected Role</button>
+                </div>
+
+                <div class="card">
+                  <h3>Generated Bundle</h3>
+                  <div class="row">
+                    <button id="designerExportBundle" class="secondary">Export YAML</button>
+                    <button id="designerDriftCheck" class="secondary">Drift Check</button>
+                  </div>
+                  <pre id="designerBundleOut"></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
 
+  <!-- Load JavaScript -->
   <script src="/ui/static/app.js"></script>
 </body>
 </html>

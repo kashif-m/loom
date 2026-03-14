@@ -25,6 +25,7 @@ class Organization(BaseModel):
     litellm_base_url: str | None = None
     litellm_api_key: str | None = None
     litellm_default_model: str = "open-large"
+    litellm_start_cmd: str | None = None
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     opencode_enabled: bool = False
@@ -67,6 +68,7 @@ class MemoryScopeReference(BaseModel):
 
 class Task(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
+    organization_id: str = "default"
     raw_request: str
     normalized_request: str | None = None
     domain_pack: str | None = None
@@ -90,6 +92,72 @@ class WorkflowDefinitionMetadata(BaseModel):
     intent_group: str
     status: StatusEnum = StatusEnum.draft
     selection_hints: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class PackageArtifact(BaseModel):
+    package_id: str = Field(default_factory=lambda: str(uuid4()))
+    organization_id: str = "default"
+    title: str
+    workflow_id: str
+    workflow_version: int
+    task_id: str | None = None
+    content: str
+    status: StatusEnum = StatusEnum.active
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GroundingReference(BaseModel):
+    reference_id: str = Field(default_factory=lambda: str(uuid4()))
+    organization_id: str = "default"
+    reference_type: str
+    source_ref: str
+    claim: str
+    evidence: str | None = None
+    workflow_id: str | None = None
+    task_id: str | None = None
+    status: StatusEnum = StatusEnum.active
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class PRContext(BaseModel):
+    pr_context_id: str = Field(default_factory=lambda: str(uuid4()))
+    organization_id: str = "default"
+    pr_ref: str
+    repo_ref: str
+    fork_or_main: str
+    current_head_sha: str | None = None
+    review_state_last_fetched_at: datetime | None = None
+    promotion_state: str | None = None
+    cleanup_state: str | None = None
+    terminal_outcome: str | None = None
+    status: StatusEnum = StatusEnum.active
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class AuditResult(BaseModel):
+    audit_id: str = Field(default_factory=lambda: str(uuid4()))
+    organization_id: str = "default"
+    task_id: str | None = None
+    workflow_id: str | None = None
+    checklist_id: str
+    passed: bool
+    findings: list[str] = Field(default_factory=list)
+    status: StatusEnum = StatusEnum.active
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class RepoTargetMapping(BaseModel):
+    mapping_id: str = Field(default_factory=lambda: str(uuid4()))
+    organization_id: str = "default"
+    source_url: str
+    repository: str
+    file_paths: list[str] = Field(default_factory=list)
+    branch: str | None = None
+    confidence: float = 1.0
+    status: StatusEnum = StatusEnum.active
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -158,6 +226,47 @@ class CompiledWorkflowIR(BaseModel):
     memory_hints: dict[str, Any] = Field(default_factory=dict)
 
 
+class MemoryGroupDefinition(BaseModel):
+    group_id: str
+    organization_id: str = "default"
+    title: str
+    description: str | None = None
+    visibility: Literal["shared", "private"] = "shared"
+    owner_role_id: str | None = None
+    status: StatusEnum = StatusEnum.active
+
+
+class MemoryGroupMembership(BaseModel):
+    membership_id: str | None = None
+    organization_id: str = "default"
+    group_id: str
+    role_id: str
+    access: Literal["read", "write", "read_write"] = "read_write"
+    status: StatusEnum = StatusEnum.active
+
+    @model_validator(mode="after")
+    def ensure_membership_id(self) -> MemoryGroupMembership:
+        if not self.membership_id:
+            self.membership_id = f"{self.organization_id}:{self.group_id}:{self.role_id}"
+        return self
+
+
+class MemoryRoleEdge(BaseModel):
+    edge_id: str | None = None
+    organization_id: str = "default"
+    parent_role_id: str
+    child_role_id: str
+    shared_group_id: str | None = None
+    status: StatusEnum = StatusEnum.active
+
+    @model_validator(mode="after")
+    def ensure_edge_id(self) -> MemoryRoleEdge:
+        if not self.edge_id:
+            group = self.shared_group_id or "none"
+            self.edge_id = f"{self.organization_id}:{self.parent_role_id}:{self.child_role_id}:{group}"
+        return self
+
+
 class RoleDefinition(BaseModel):
     role_id: str
     title: str
@@ -165,6 +274,7 @@ class RoleDefinition(BaseModel):
     capability_ids: list[str] = Field(default_factory=list)
     policy_ids: list[str] = Field(default_factory=list)
     memory_visibility: list[str] = Field(default_factory=list)
+    preferred_model_id: str | None = None
     status: StatusEnum = StatusEnum.draft
 
 

@@ -94,6 +94,7 @@ def build_admin_router(container) -> APIRouter:
     def invalidate_memory(req: AdminInvalidateMemoryRequest) -> dict:
         svc = InvalidationService(container.memory_service)
         scope = {
+            "organization_id": req.organization_id,
             "domain_pack": req.domain_pack,
             "workflow_id": req.workflow_id,
             "workflow_version": req.workflow_version,

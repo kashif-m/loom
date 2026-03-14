@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loom.models import CompiledWorkflowIR
+from loom.models import CompiledWorkflowIR, StatusEnum
 
 
 class IRValidator:
@@ -25,12 +25,25 @@ class IRValidator:
         for step in ir.steps:
             if not step.owned_by:
                 errors.append(f"step {step.step_id}: owned_by is required")
-            if self.role_registry.get(step.owned_by) is None:
+            owner_role = self.role_registry.get(step.owned_by)
+            if owner_role is None:
                 errors.append(f"step {step.step_id}: unknown role {step.owned_by}")
+            else:
+                if owner_role.status != StatusEnum.active:
+                    errors.append(f"step {step.step_id}: owner role {step.owned_by} is not active")
+                missing_for_owner = sorted(set(step.required_capabilities) - set(owner_role.capability_ids))
+                if missing_for_owner:
+                    errors.append(
+                        f"step {step.step_id}: owner role {step.owned_by} missing capabilities "
+                        f"{', '.join(missing_for_owner)}"
+                    )
 
             for participant in step.participants:
-                if self.role_registry.get(participant) is None:
+                participant_role = self.role_registry.get(participant)
+                if participant_role is None:
                     errors.append(f"step {step.step_id}: unknown participant role {participant}")
+                elif participant_role.status != StatusEnum.active:
+                    errors.append(f"step {step.step_id}: participant role {participant} is not active")
 
             for cap in step.required_capabilities:
                 if not self.capability_registry.exists(cap):

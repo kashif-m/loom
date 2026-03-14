@@ -7,3 +7,11 @@
 *.db
 *__pycache__
 *alembic
+/.agents
+/.claude
+/.codex
+/.cursor
+/.kiro
+/.gemini
+/.opencode
+/.pi

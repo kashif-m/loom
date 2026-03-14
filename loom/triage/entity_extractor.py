@@ -4,23 +4,32 @@ import re
 
 
 class EntityExtractor:
+    def extract_all(self, request: str) -> dict[str, list[str]]:
+        pr_numbers = re.findall(r"\bpr\s*#?(\d+)\b", request, flags=re.IGNORECASE)
+        urls = re.findall(r"https?://\S+", request)
+        repositories = re.findall(
+            r"repo(?:sitory)?\s*[:=]\s*([\w./-]+)",
+            request,
+            flags=re.IGNORECASE,
+        )
+        branches = re.findall(r"branch\s*[:=]\s*([\w./-]+)", request, flags=re.IGNORECASE)
+        return {
+            "pr_numbers": pr_numbers,
+            "document_urls": urls,
+            "repositories": repositories,
+            "branches": branches,
+        }
+
     def extract(self, request: str) -> dict[str, str]:
         entities: dict[str, str] = {}
-
-        pr_match = re.search(r"\bpr\s*#?(\d+)\b", request, flags=re.IGNORECASE)
-        if pr_match:
-            entities["pr_number"] = pr_match.group(1)
-
-        url_match = re.search(r"https?://\S+", request)
-        if url_match:
-            entities["document_url"] = url_match.group(0)
-
-        repo_match = re.search(r"repo(?:sitory)?\s*[:=]\s*([\w./-]+)", request, flags=re.IGNORECASE)
-        if repo_match:
-            entities["repository"] = repo_match.group(1)
-
-        branch_match = re.search(r"branch\s*[:=]\s*([\w./-]+)", request, flags=re.IGNORECASE)
-        if branch_match:
-            entities["branch"] = branch_match.group(1)
+        all_entities = self.extract_all(request)
+        if all_entities["pr_numbers"]:
+            entities["pr_number"] = all_entities["pr_numbers"][0]
+        if all_entities["document_urls"]:
+            entities["document_url"] = all_entities["document_urls"][0]
+        if all_entities["repositories"]:
+            entities["repository"] = all_entities["repositories"][0]
+        if all_entities["branches"]:
+            entities["branch"] = all_entities["branches"][0]
 
         return entities

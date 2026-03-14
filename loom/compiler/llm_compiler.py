@@ -10,6 +10,15 @@ from loom.models import (
 
 
 class DeterministicLLMCompiler:
+    @staticmethod
+    def _parse_int_or_none(raw: str | None) -> int | None:
+        if raw is None or raw == "":
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
     def compile(self, workflow_id: str, version: int, doc: ParsedWorkflowDocument) -> CompiledWorkflowIR:
         steps: list[CompiledWorkflowStep] = []
         for i, s in enumerate(doc.steps):
@@ -38,7 +47,12 @@ class DeterministicLLMCompiler:
                 ),
                 policy_bindings=[p.strip() for p in attrs.get("policy_bindings", "").split(",") if p.strip()],
                 prompt_profile_id=attrs.get("prompt_profile_id"),
-                memory_hints={"notes": attrs.get("memory_hints", "")},
+                memory_hints={
+                    "notes": attrs.get("memory_hints", ""),
+                    "state_partition": attrs.get("state_partition"),
+                    "subworkflow_id": attrs.get("subworkflow_id"),
+                    "subworkflow_version": self._parse_int_or_none(attrs.get("subworkflow_version")),
+                },
             )
             steps.append(step)
 

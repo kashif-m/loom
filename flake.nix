@@ -16,6 +16,7 @@
           packages = with pkgs; [
             python
             python.pkgs.pip
+            just
             git
             gh
             curl
@@ -47,13 +48,22 @@
             export LOOM_INTEGRATION_PROFILE=local
             export LOOM_LITELLM_ENABLED=false
             export LOOM_LITELLM_DEFAULT_MODEL="openai/gpt-4.1-mini"
-            if [ ! -f .venv/bin/activate ]; then
-              python -m venv .venv
+            venv_path="$PWD/.venv"
+            recreate_venv=0
+            if [ ! -f "$venv_path/bin/activate" ] || [ ! -x "$venv_path/bin/python" ]; then
+              recreate_venv=1
+            elif ! grep -q "VIRTUAL_ENV=$venv_path" "$venv_path/bin/activate"; then
+              # Handle moved/copied repos where activate script points to a different path.
+              recreate_venv=1
             fi
-            . .venv/bin/activate
+            if [ "$recreate_venv" -eq 1 ]; then
+              rm -rf "$venv_path"
+              python -m venv "$venv_path"
+            fi
+            . "$venv_path/bin/activate"
             echo "Loom dev shell ready"
             echo "Virtualenv: .venv (activated)"
-            echo "Try: pip install -e '.[dev,integrations]' && make bootstrap && make run"
+            echo "Try: pip --python .venv/bin/python install -e '.[dev,integrations]' && just bootstrap && just run"
             if command -v git >/dev/null 2>&1; then echo "git: ok"; fi
             if command -v gh >/dev/null 2>&1; then echo "gh: ok"; fi
             if command -v node >/dev/null 2>&1; then echo "node: ok"; fi

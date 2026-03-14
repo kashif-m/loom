@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 from loom.app.config import load_settings, sanitized_runtime_config, validate_settings
+from loom.app.control_plane_cli import run_control_plane_cli
+from loom.app.chat_cli import run_chat_loop
 from loom.app.dependency_injection import Container
 from loom.app.security_middleware import install_security_headers
 from loom.app.startup_checks import check_connectors
@@ -58,6 +61,20 @@ def build_app() -> FastAPI:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "ctl":
+        run_control_plane_cli(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "chat":
+        settings = load_settings()
+        validate_settings(settings)
+        container = Container(settings)
+        container.startup()
+        try:
+            run_chat_loop(container)
+        finally:
+            container.shutdown()
+        return
+
     parser = argparse.ArgumentParser(description="Loom")
     parser.add_argument("--health", action="store_true")
     parser.add_argument("--serve", action="store_true")

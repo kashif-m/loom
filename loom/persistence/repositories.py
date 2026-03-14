@@ -16,6 +16,7 @@ class TaskRepository:
         with self._session_factory() as session:
             row = TaskRow(
                 task_id=task.task_id,
+                organization_id=task.organization_id,
                 raw_request=task.raw_request,
                 normalized_request=task.normalized_request,
                 workflow_id=task.workflow_id,
@@ -38,6 +39,7 @@ class TaskRepository:
                 return None
             return Task(
                 task_id=row.task_id,
+                organization_id=row.organization_id,
                 raw_request=row.raw_request,
                 normalized_request=row.normalized_request,
                 workflow_id=row.workflow_id,
@@ -56,6 +58,7 @@ class TaskRepository:
             if not row:
                 raise KeyError(f"task not found: {task.task_id}")
             row.normalized_request = task.normalized_request
+            row.organization_id = task.organization_id
             row.workflow_id = task.workflow_id
             row.workflow_version = task.workflow_version
             row.domain_pack = task.domain_pack
@@ -67,12 +70,16 @@ class TaskRepository:
             session.commit()
         return task
 
-    def list(self) -> list[Task]:
+    def list(self, organization_id: str | None = None) -> list[Task]:
         with self._session_factory() as session:
-            rows = session.execute(select(TaskRow).order_by(desc(TaskRow.created_at))).scalars().all()
+            stmt = select(TaskRow)
+            if organization_id:
+                stmt = stmt.where(TaskRow.organization_id == organization_id)
+            rows = session.execute(stmt.order_by(desc(TaskRow.created_at))).scalars().all()
             return [
                 Task(
                     task_id=row.task_id,
+                    organization_id=row.organization_id,
                     raw_request=row.raw_request,
                     normalized_request=row.normalized_request,
                     workflow_id=row.workflow_id,
@@ -389,6 +396,7 @@ class OrganizationRepository:
                 litellm_base_url=row.litellm_base_url,
                 litellm_api_key=row.litellm_api_key,
                 litellm_default_model=row.litellm_default_model,
+                litellm_start_cmd=row.litellm_start_cmd,
                 openai_api_key=row.openai_api_key,
                 openai_model=row.openai_model,
                 opencode_enabled=row.opencode_enabled,
@@ -405,6 +413,7 @@ class OrganizationRepository:
                 row.litellm_base_url = org.litellm_base_url
                 row.litellm_api_key = org.litellm_api_key
                 row.litellm_default_model = org.litellm_default_model
+                row.litellm_start_cmd = org.litellm_start_cmd
                 row.openai_api_key = org.openai_api_key
                 row.openai_model = org.openai_model
                 row.opencode_enabled = org.opencode_enabled
@@ -417,6 +426,7 @@ class OrganizationRepository:
                         litellm_base_url=org.litellm_base_url,
                         litellm_api_key=org.litellm_api_key,
                         litellm_default_model=org.litellm_default_model,
+                        litellm_start_cmd=org.litellm_start_cmd,
                         openai_api_key=org.openai_api_key,
                         openai_model=org.openai_model,
                         opencode_enabled=org.opencode_enabled,
@@ -431,6 +441,27 @@ class OrganizationRepository:
         if org:
             return org
         return self.upsert(Organization(org_id=org_id, name="My Organization"))
+
+    def list(self) -> list[Organization]:
+        with self._session_factory() as session:
+            rows = session.execute(select(OrganizationRow).order_by(OrganizationRow.org_id)).scalars().all()
+            return [
+                Organization(
+                    org_id=row.org_id,
+                    name=row.name,
+                    litellm_base_url=row.litellm_base_url,
+                    litellm_api_key=row.litellm_api_key,
+                    litellm_default_model=row.litellm_default_model,
+                    litellm_start_cmd=row.litellm_start_cmd,
+                    openai_api_key=row.openai_api_key,
+                    openai_model=row.openai_model,
+                    opencode_enabled=row.opencode_enabled,
+                    opencode_cmd=row.opencode_cmd,
+                    created_at=row.created_at,
+                    updated_at=row.updated_at,
+                )
+                for row in rows
+            ]
 
 
 class Repositories:
@@ -449,7 +480,18 @@ class Repositories:
         self.schedules = GenericRegistryRepository(session_factory, "schedules")
         self.participants = GenericRegistryRepository(session_factory, "participants")
         self.memory = GenericRegistryRepository(session_factory, "memory")
+        self.memory_groups = GenericRegistryRepository(session_factory, "memory_groups")
+        self.memory_memberships = GenericRegistryRepository(session_factory, "memory_memberships")
+        self.memory_edges = GenericRegistryRepository(session_factory, "memory_edges")
+        self.state_partitions = GenericRegistryRepository(session_factory, "state_partitions")
+        self.packages = GenericRegistryRepository(session_factory, "packages")
+        self.grounding_references = GenericRegistryRepository(session_factory, "grounding_references")
+        self.pr_contexts = GenericRegistryRepository(session_factory, "pr_contexts")
+        self.audit_results = GenericRegistryRepository(session_factory, "audit_results")
+        self.repo_target_mappings = GenericRegistryRepository(session_factory, "repo_target_mappings")
         self.integration_bindings = GenericRegistryRepository(session_factory, "integration_bindings")
+        self.organization_runtimes = GenericRegistryRepository(session_factory, "organization_runtimes")
+        self.designer_drafts = GenericRegistryRepository(session_factory, "designer_drafts")
         self.incidents = GenericRegistryRepository(session_factory, "incidents")
         self.events = EventRepository(session_factory)
         self.schedule_runs = ScheduleRunRepository(session_factory)

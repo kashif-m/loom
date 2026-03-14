@@ -20,6 +20,7 @@ class AdminWorkflowPublishRequest(BaseModel):
 
 
 class AdminInvalidateMemoryRequest(BaseModel):
+    organization_id: str = "default"
     domain_pack: str
     workflow_id: str
     workflow_version: int

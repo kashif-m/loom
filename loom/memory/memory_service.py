@@ -26,30 +26,43 @@ class InMemoryMemoryService:
             workspace=graphiti_workspace,
         )
 
+    def _organization_id(self, scope: dict[str, Any]) -> str:
+        return str(scope.get("organization_id", "default"))
+
     def _scope_key(self, scope: dict[str, Any], memory_type: MemoryType | str) -> str:
         mem_type = MemoryType(memory_type) if isinstance(memory_type, str) else memory_type
+        scope_id = scope.get("scope_id") or scope.get("role", "any")
         return ":".join(
             [
+                self._organization_id(scope),
                 scope.get("domain_pack", "global"),
                 scope.get("workflow_id", "none"),
                 str(scope.get("workflow_version", "0")),
-                scope.get("role", "any"),
+                str(scope_id),
                 mem_type.value,
             ]
         )
 
     def write(self, scope: dict[str, Any], memory_type: MemoryType | str, payload: dict[str, Any]) -> None:
         mem_type = MemoryType(memory_type) if isinstance(memory_type, str) else memory_type
+        organization_id = self._organization_id(scope)
         key = self._scope_key(scope, memory_type) + ":" + payload.get("id", "entry")
-        self.graphiti.upsert(key, payload)
+        self.graphiti.upsert(key, payload, workspace=organization_id)
         self.repositories.memory.upsert(key, {"scope": scope, "type": mem_type.value, "payload": payload})
-        self.event_bus.emit(TaskEvent(task_id=payload.get("task_id", "system"), event_type="memory_write", payload={"key": key}))
+        self.event_bus.emit(
+            TaskEvent(
+                task_id=payload.get("task_id", "system"),
+                event_type="memory_write",
+                payload={"key": key, "organization_id": organization_id},
+            )
+        )
 
     def retrieve(
         self, scope: dict[str, Any], memory_type: MemoryType | str, active_only: bool = True
     ) -> list[dict[str, Any]]:
+        organization_id = self._organization_id(scope)
         prefix = self._scope_key(scope, memory_type)
-        rows = self.graphiti.list_by_scope(prefix)
+        rows = self.graphiti.list_by_scope(prefix, workspace=organization_id)
         if active_only:
             rows = [r for r in rows if not r.get("deprecated", False)]
         return rows
@@ -67,13 +80,14 @@ class InMemoryMemoryService:
         return summary
 
     def invalidate(self, scope: dict[str, Any], hard: bool = False) -> int:
+        organization_id = self._organization_id(scope)
         prefix = self._scope_key(scope, MemoryType.episodic)
-        rows = self.graphiti.list_by_scope(prefix)
+        rows = self.graphiti.list_by_scope(prefix, workspace=organization_id)
         changed = 0
         for row in rows:
             row["deprecated"] = True
             changed += 1
         if hard:
-            for key in [k for k in self.graphiti._store.keys() if k.startswith(prefix)]:
-                self.graphiti.delete(key)
+            for key in self.graphiti.list_keys_by_scope(prefix, workspace=organization_id):
+                self.graphiti.delete(key, workspace=organization_id)
         return changed

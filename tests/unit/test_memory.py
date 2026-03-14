@@ -25,9 +25,26 @@ class _Repo:
 
 def test_memory_write_retrieve_and_invalidate():
     svc = InMemoryMemoryService(_Repo(), _EventBus())
-    scope = {"domain_pack": "docs", "workflow_id": "wf", "workflow_version": 1, "role": "docs_ops"}
+    scope = {
+        "organization_id": "org_a",
+        "domain_pack": "docs",
+        "workflow_id": "wf",
+        "workflow_version": 1,
+        "role": "docs_ops",
+    }
     svc.write(scope, MemoryType.episodic, {"id": "e1", "task_id": "t1", "summary": "hello"})
     rows = svc.retrieve(scope, MemoryType.episodic)
     assert len(rows) == 1
+    other_org_rows = svc.retrieve(
+        {
+            "organization_id": "org_b",
+            "domain_pack": "docs",
+            "workflow_id": "wf",
+            "workflow_version": 1,
+            "role": "docs_ops",
+        },
+        MemoryType.episodic,
+    )
+    assert other_org_rows == []
     changed = svc.invalidate(scope, hard=False)
     assert changed == 1

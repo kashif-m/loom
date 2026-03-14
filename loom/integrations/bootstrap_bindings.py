@@ -6,7 +6,7 @@ PROFILES: dict[str, dict[str, dict[str, Any]]] = {
     "local": {
         "graphiti": {"mode": "fallback", "enabled": False},
         "openclaw": {"mode": "disabled", "enabled": False},
-        "openai": {"mode": "mock_or_real", "enabled": False},
+        "openai": {"mode": "real", "enabled": False},
         "langsmith": {"mode": "disabled", "enabled": False},
         "opencode": {"mode": "filesystem_or_cli", "enabled": False},
     },
