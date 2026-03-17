@@ -1,3770 +1,686 @@
 # TASKS.md
 
-# Loom Implementation Backlog
+## How to use this file
 
-**System name:** Loom
-**Primary goal:** Implement a generic workflow-first multi-agent orchestration kernel in Python
-**Primary first-party domain pack:** Docs Pack
-**Initial ingress surface:** `/ff ...` on top of OpenClaw
-**Deployment target:** Local-first, container-friendly, Nix-friendly
+Work top to bottom. Each phase has an integration test at the end — **do not start the next phase until it passes.** Tasks within a phase can be done in any order unless marked with a dependency (→).
+
+Estimated effort assumes ~6 focused hours per day as a solo builder.
 
 ---
 
-# 1. How to Use This Backlog
-
-This document is written as an execution plan for a coding agent or implementation team.
-
-Each task includes:
-
-* intent,
-* scope,
-* detailed work items,
-* expected deliverables,
-* acceptance criteria,
-* dependencies,
-* implementation notes.
-
-The backlog is intentionally verbose so that implementation can proceed with minimal ambiguity.
-
-This backlog assumes the following documents already define the product:
-
-* `PRD.md`
-* `ARCHITECTURE.md`
-
-This file focuses on execution.
+## Phase 0 — Scaffolding
+**Goal:** Working local environment, empty repo skeleton, invariants documented.
+**Effort:** 3 days
 
 ---
 
-# 2. Delivery Rules
+### TASK-001 — Monorepo setup + Nix dev environment
+Set up the project structure and Nix-based dev environment.
 
-## 2.1 Kernel-first
+**Deliverables:**
+- `flake.nix` — Nix flake providing: Python 3.11, uv, ruff, pyright, Node 20, pnpm, docker, docker-compose, postgresql CLI, redis-cli, jq, curl, watchman. Shell hook auto-creates venv, syncs deps, copies .env.example, defines aliases.
+- `.envrc` — direnv integration (`use flake`). After `direnv allow`, entering the project directory activates the shell automatically.
+- `pyproject.toml` with uv, Python 3.11+, initial dependencies: `pydantic`, `pydantic-settings`, `litellm`, `loguru`, `fastapi`, `uvicorn`, `asyncpg`, `sqlalchemy[asyncio]`, `redis`, `langgraph`, `pytest`, `pytest-asyncio`, `watchdog`, `docker`
+- Directory skeleton: `src/core/`, `src/agents/`, `src/memory/`, `src/evaluation/`, `src/api/`, `workflows/`, `agents_config/`, `tests/unit/`, `tests/integration/`, `infra/`, `.data/` (gitignored)
+- `src/__init__.py` in every package directory
+- `.env.example` — all required env vars with comments (LLM models, DB, Redis, Graphiti, workflow engine, sandbox, logging)
+- `.gitignore` — exclude `.env`, `__pycache__`, `.venv`, `.data/`, `result` (nix build output)
+- `Makefile` — thin wrappers around the shell aliases defined in flake.nix: `dev`, `stop`, `migrate`, `test`, `lint`, `fmt`, `typecheck`, `api`, `ui-dev`
 
-Do not start by hardcoding Docs Pack behaviors into the kernel.
-The kernel must remain generic.
-
-## 2.2 Registry-driven
-
-Do not implement roles, workflows, policies, or capabilities as bespoke hardcoded classes unless absolutely necessary.
-
-## 2.3 Markdown workflows are source of truth
-
-Do not make compiled YAML the primary authoring layer.
-
-## 2.4 No step without ownership
-
-Every compiled step must have explicit ownership and completion semantics.
-
-## 2.5 No task without workflow
-
-Every task entering Loom must resolve to a workflow before execution.
-
-## 2.6 Keep OpenClaw thin
-
-OpenClaw is ingress, not the kernel.
-
-## 2.7 Keep Docs Pack separable
-
-All docs-specific behavior must live in Docs Pack or docs adapters.
-
-## 2.8 Preserve observability
-
-Every meaningful state transition must emit traceable events.
-
----
-
-# 3. Target Repository Shape
-
-Create a repository with a structure roughly like this:
-
-```text
-loom/
-├── loom/
-│   ├── app/
-│   ├── ingress/
-│   ├── triage/
-│   ├── kernel/
-│   ├── compiler/
-│   ├── registries/
-│   ├── memory/
-│   ├── execution/
-│   ├── observability/
-│   ├── scheduling/
-│   ├── adapters/
-│   ├── domainpacks/
-│   │   └── docs/
-│   └── persistence/
-├── tests/
-├── examples/
-├── scripts/
-├── Dockerfile
-├── flake.nix
-├── pyproject.toml
-├── README.md
-├── PRD.md
-├── ARCHITECTURE.md
-└── TASKS.md
+**Setup flow (from fresh clone):**
+```bash
+nix develop          # or: direnv allow (auto on cd if direnv installed)
+dev                  # starts Postgres + Redis + Neo4j via docker-compose
+migrate              # runs DB migrations
+api                  # starts FastAPI on :8000
 ```
 
 ---
 
-# 4. Phase Overview
-
-Implementation should proceed in the following phases:
-
-1. Project foundation
-2. Core schemas and persistence
-3. Registries
-4. Workflow markdown compiler
-5. Task intake and triage
-6. Kernel runtime
-7. Memory layer
-8. Observability and topology
-9. Scheduling
-10. OpenClaw ingress
-11. Docs Pack
-12. Verification and PR operations
-13. Integration and end-to-end tests
-14. Packaging and developer environment
-15. Hardening and cleanup
-
-The coding agent should complete each phase with passing tests before progressing aggressively into the next one.
+### TASK-002 — Docker-compose local stack
+**Depends on:** TASK-001
 
----
-
-# 5. Phase 1 — Project Foundation
-
-## [x] TASK-001: Initialize Python project
-
-### Objective
-
-Create the base Python application and package structure.
-
-### Work
-
-* Create the `loom/` Python package.
-* Set up `pyproject.toml` using a modern build system.
-* Add runtime dependencies and dev dependencies.
-* Configure formatting, linting, and static checks.
-* Add a minimal `README.md` with project purpose and run instructions.
-* Add package init files for all major modules.
-
-### Deliverables
-
-* `pyproject.toml`
-* initial package structure
-* formatter/linter/type-check config
-* project bootstrap scripts
-
-### Acceptance Criteria
-
-* `pip install -e .` works
-* project imports cleanly
-* linters/type-checkers run without fatal config errors
-
-### Dependencies
-
-None
-
----
-
-## [x] TASK-002: Add application entrypoint
-
-### Objective
-
-Create a basic application bootstrap layer.
-
-### Work
-
-* Add `loom/app/main.py`
-* Add config loading module
-* Add dependency wiring module
-* Add startup/shutdown hooks
-* Add health endpoint or health command
-
-### Deliverables
-
-* runnable app bootstrap
-* config loader
-* app wiring skeleton
-
-### Acceptance Criteria
-
-* app starts locally
-* config loads from environment
-* health endpoint or equivalent status call returns successfully
-
-### Dependencies
-
-TASK-001
-
----
-
-# 6. Phase 2 — Core Schemas and Persistence
-
-## [x] TASK-003: Implement canonical core schemas
-
-### Objective
-
-Create canonical Pydantic models for all major kernel entities.
-
-### Work
-
-Implement models for:
-
-* Task
-* WorkflowDefinitionMetadata
-* WorkflowMarkdownDocument
-* CompiledWorkflowIR
-* CompiledWorkflowStep
-* RoleDefinition
-* RuntimeParticipant
-* CapabilityDefinition
-* PromptProfile
-* PolicyDefinition
-* DomainPackManifest
-* ScheduleDefinition
-* TaskEvent
-* MemoryScopeReference
-
-### Deliverables
-
-* schema modules under `loom/`
-* tests validating schema parsing and validation
-
-### Acceptance Criteria
-
-* all schemas serialize/deserialize cleanly
-* invalid shapes fail validation predictably
-
-### Dependencies
-
-TASK-001
-
----
-
-## [x] TASK-004: Implement persistence layer
-
-### Objective
-
-Create a persistence strategy for tasks, workflows, registries, schedules, and event logs.
-
-### Work
-
-* Choose a persistence backend for v1 (SQLite preferred for simplicity).
-* Create DB models or repository abstractions.
-* Add migration support.
-* Implement CRUD repositories for:
-
-  * tasks
-  * workflows
-  * compiled workflow IR
-  * roles
-  * capabilities
-  * prompt profiles
-  * policies
-  * domain packs
-  * schedules
-  * runtime participants
-  * event logs
-
-### Deliverables
-
-* DB schema
-* migration scripts
-* repository interfaces and implementations
-
-### Acceptance Criteria
-
-* data survives restarts
-* CRUD works for all first-class entities
-* migrations can create fresh DB cleanly
-
-### Dependencies
-
-TASK-003
-
----
-
-# 7. Phase 3 — Registries
-
-## [x] TASK-005: Implement workflow registry
-
-### Objective
-
-Allow registration, retrieval, update, activation, deprecation, and archival of workflow definitions.
-
-### Work
-
-* Implement workflow registry service.
-* Support markdown workflow storage.
-* Support compiled IR storage.
-* Support active version lookup by workflow ID.
-* Support draft → active transition only after validation.
-* Support deprecating old versions.
-
-### Deliverables
-
-* workflow registry service
-* tests covering versioning and active lookup
-
-### Acceptance Criteria
-
-* can create draft workflow
-* can activate valid workflow version
-* can deprecate old versions
-* new tasks always resolve to active version
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-006: Implement role registry
-
-### Objective
-
-Define and manage role definitions independent of hardcoded Python classes.
-
-### Work
-
-* Implement role CRUD.
-* Store role metadata, capability set, policy bindings, memory visibility, and domain-pack ownership.
-* Add validation for duplicate role IDs.
-* Add status management: draft, active, retired, archived.
-
-### Acceptance Criteria
-
-* roles can be created, updated, retired, and retrieved
-* role definitions are independent of bespoke runtime classes
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-007: Implement capability registry
-
-### Objective
-
-Create a registry for capabilities used by steps and roles.
-
-### Work
-
-* Implement CRUD for capabilities.
-* Add bindings to connectors/adapters.
-* Add optional validation requirements.
-
-### Acceptance Criteria
-
-* workflows and roles can reference capabilities by ID
-* invalid capability references are caught during validation
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-008: Implement policy registry
-
-### Objective
-
-Store and resolve explicit policy definitions.
-
-### Work
-
-* Implement policy CRUD.
-* Support workflow-scoped, role-scoped, and global policies.
-* Add enforcement modes.
-* Provide policy resolution service.
-
-### Acceptance Criteria
-
-* policies can be attached to workflows and roles
-* policy engine can resolve effective policy set for a task or step
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-009: Implement prompt profile registry
-
-### Objective
-
-Store prompt profiles separately from role and workflow definitions.
-
-### Work
-
-* Implement prompt profile CRUD.
-* Add versioning support.
-* Add domain pack ownership.
-* Allow role and workflow step bindings.
-
-### Acceptance Criteria
-
-* profiles resolve correctly by ID/version
-* changing a prompt profile does not require code changes
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-010: Implement domain pack registry
-
-### Objective
-
-Allow domain packs to be loaded and managed as first-class extensions.
-
-### Work
-
-* Define domain pack manifest schema.
-* Implement load, validate, activate, deactivate.
-* Domain pack should contribute:
-
-  * workflows
-  * roles
-  * capabilities
-  * policies
-  * prompt profiles
-  * connectors/adapters
-  * validation rules
-
-### Acceptance Criteria
-
-* Docs Pack can be loaded through this registry later
-* kernel remains generic
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-011: Implement schedule registry
-
-### Objective
-
-Persist and manage schedules.
-
-### Work
-
-* Implement CRUD for schedules.
-* Store cron expression, target workflow or maintenance action, payload, enable/disable flags.
-
-### Acceptance Criteria
-
-* schedules can be created, updated, disabled, and deleted
-* schedule definitions survive restart
-
-### Dependencies
-
-TASK-004
-
----
-
-# 8. Phase 4 — Workflow Markdown Compiler
-
-## [x] TASK-012: Implement workflow markdown parser
-
-### Objective
-
-Parse structured markdown workflows into normalized sections.
-
-### Work
-
-* Read workflow markdown files.
-* Parse section headings.
-* Extract required sections:
-
-  * Title
-  * Purpose
-  * Trigger
-  * Required Inputs
-  * Steps
-  * Completion Criteria
-  * Blocked Conditions
-  * Failure Conditions
-  * Rules
-* Normalize ordered steps.
-* Preserve source location info for error reporting if practical.
-
-### Acceptance Criteria
-
-* valid markdown document becomes normalized parsed object
-* missing required sections fail clearly
-
-### Dependencies
-
-TASK-003
-
----
-
-## [x] TASK-013: Implement LLM-assisted workflow compiler
-
-### Objective
-
-Convert normalized workflow markdown into compiled IR.
-
-### Work
-
-* Build compiler prompt that translates normalized markdown into low-level YAML or internal structured IR.
-* Keep markdown as source of truth.
-* Emit deterministic, structured output as much as possible.
-* Ensure compiler extracts:
-
-  * workflow metadata
-  * selection hints
-  * ordered step IR
-  * ownership hints
-  * capability hints
-  * transitions
-  * completion semantics
-  * terminal states
-  * policy hints
-  * memory hints
-
-### Acceptance Criteria
-
-* valid workflow markdown compiles into structured IR
-* compiler output is stable enough for validation and storage
-
-### Dependencies
-
-TASK-012
-
----
-
-## [x] TASK-014: Implement workflow IR validator
-
-### Objective
-
-Ensure compiled workflow IR is executable and safe.
-
-### Work
-
-Validate that:
-
-* workflow ID exists
-* version is valid
-* all step IDs are unique
-* every step has `owned_by`
-* every referenced role exists
-* every referenced capability exists
-* transitions point to valid steps or terminal states
-* terminal states exist
-* completion rules are resolvable
-* policy bindings reference existing policies
-* memory bindings are well-formed
-
-### Acceptance Criteria
-
-* invalid compiled workflow cannot be activated
-* validator returns actionable error messages
-
-### Dependencies
-
-* TASK-005
-* TASK-006
-* TASK-007
-* TASK-008
-* TASK-013
-
----
-
-## [x] TASK-015: Implement compiler service and publication flow
-
-### Objective
-
-Provide end-to-end workflow publication from markdown to active compiled version.
-
-### Work
-
-* Add service to:
-
-  * load markdown
-  * parse
-  * compile
-  * validate
-  * persist
-  * activate or reject
-* Support draft activation flow.
-* Support replacement of old active version.
-* Trigger memory invalidation policy for deprecated versions.
-
-### Acceptance Criteria
-
-* a markdown workflow can become active through one command or API call
-* old versions remain audit-visible
-
-### Dependencies
-
-TASK-012
-TASK-013
-TASK-014
-
----
-
-# 9. Phase 5 — Task Intake and Triage
-
-## [x] TASK-016: Implement request intake service
-
-### Objective
-
-Accept natural-language requests and create task records.
-
-### Work
-
-* Implement intake endpoint/service.
-* Create task record in `created` state.
-* Store raw request and metadata.
-* Forward request to triage.
-
-### Acceptance Criteria
-
-* natural-language request results in a persisted task
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-017: Implement classifier
-
-### Objective
-
-Classify requests into workflow intent groups.
-
-### Work
-
-* Build classification component.
-* Support confidence scoring.
-* Map classifier output to active workflows.
-* Support “unsupported” and “needs minimal clarification” outcomes.
-
-### Acceptance Criteria
-
-* supported docs requests route correctly to one of the four initial workflows
-* unsupported requests return explicit response
-
-### Dependencies
-
-TASK-005
-TASK-016
-
----
-
-## [x] TASK-018: Implement entity extractor
-
-### Objective
-
-Extract relevant entities from natural-language requests.
-
-### Work
-
-Extract items such as:
-
-* PR number
-* repository name
-* document URL
-* branch name
-* optional environment hints
-
-### Acceptance Criteria
-
-* extraction works on primary example requests
-* extracted entities are attached to task state
-
-### Dependencies
-
-TASK-016
-
----
-
-## [x] TASK-019: Implement workflow selector
-
-### Objective
-
-Resolve the final workflow version for a task.
-
-### Work
-
-* Combine classifier output, entities, workflow metadata, and active registry state.
-* Select workflow ID and active version.
-* Update task state to `workflow_selected`.
-
-### Acceptance Criteria
-
-* workflow selection is explicit and persisted
-* tasks do not enter execution without workflow selection
-
-### Dependencies
-
-TASK-017
-TASK-018
-
----
-
-# 10. Phase 6 — Kernel Runtime
-
-## [x] TASK-020: Implement task state machine
-
-### Objective
-
-Create the canonical task lifecycle and transition rules.
-
-### Work
-
-Implement allowed transitions for:
-
-* created
-* triaging
-  n- workflow_selected
-* running
-* awaiting_input
-* blocked
-* failed
-* completed
-* archived
-
-Also implement invalid transition rejection.
-
-### Acceptance Criteria
-
-* task state transitions are explicit and tested
-
-### Dependencies
-
-TASK-003
-TASK-004
-
----
-
-## [x] TASK-021: Implement participant resolver
-
-### Objective
-
-Resolve role ownership into concrete runtime participants.
-
-### Work
-
-* Resolve step `owned_by` roles into runtime participant instances.
-* Resolve `participants` collaborators.
-* Enforce capability satisfaction.
-* Enforce spawn constraints.
-* Support reusing existing participants when allowed.
-* Support creating new runtime participants when needed.
-
-### Acceptance Criteria
-
-* step ownership resolves into valid participant set
-* capability mismatch fails clearly
-
-### Dependencies
-
-TASK-006
-TASK-007
-TASK-020
-
----
-
-## [x] TASK-022: Implement execution planner
-
-### Objective
-
-Plan which step runs next and what context must be assembled.
-
-### Work
-
-* Load compiled workflow IR.
-* Enter first step.
-* Evaluate transitions after each step.
-* Support terminal transitions.
-* Support blocked and failure transitions.
-
-### Acceptance Criteria
-
-* workflow step order follows compiled IR reliably
-
-### Dependencies
-
-TASK-015
-TASK-020
-
----
-
-## [x] TASK-023: Implement step runner
-
-### Objective
-
-Execute a single step given compiled IR and resolved participants.
-
-### Work
-
-* Read step definition.
-* Assemble inputs.
-* Bind owners and collaborators.
-* Invoke participant execution.
-* Capture outputs.
-* Evaluate completion.
-* Emit events.
-
-### Acceptance Criteria
-
-* a simple step can run end-to-end and write outputs to task state
-
-### Dependencies
-
-TASK-021
-TASK-022
-
----
-
-## [x] TASK-024: Implement collaborative step runner
-
-### Objective
-
-Support multi-participant step execution.
-
-### Work
-
-Support spawn strategies:
-
-* single_owner
-* primary_with_support
-* parallel_research
-* consensus_required
-* any_one_can_complete
-
-Implement merge behavior such as:
-
-* owner_synthesizes
-* first_valid_output
-* consensus_summary
-* explicit_human_choice
-
-### Acceptance Criteria
-
-* one workflow step can use multiple participants correctly
-* outputs are merged according to merge policy
-
-### Dependencies
-
-TASK-023
-
----
-
-## [x] TASK-025: Implement completion evaluator
-
-### Objective
-
-Determine when a step is complete.
-
-### Work
-
-Support completion types:
-
-* all_outputs_present
-* predicate
-* approval_received
-* all_participants_complete
-* any_participant_complete
-
-### Acceptance Criteria
-
-* completion logic works across multiple step shapes
-
-### Dependencies
-
-TASK-023
-TASK-024
-
----
-
-## [x] TASK-026: Implement transition engine
-
-### Objective
-
-Transition task execution based on step outcomes.
-
-### Work
-
-* Apply `on_success`, `on_blocked`, `on_failure`, `on_retry`.
-* Move to next step or terminal state.
-* Update task state and event log.
-
-### Acceptance Criteria
-
-* step outcomes transition correctly and deterministically
-
-### Dependencies
-
-TASK-025
-
----
-
-## [x] TASK-027: Implement policy engine
-
-### Objective
-
-Enforce policies during runtime.
-
-### Work
-
-* Resolve global + workflow + role + step policies.
-* Enforce examples such as:
-
-  * no direct merge
-  * raise PR only
-  * approval required before promotion
-  * memory visibility restriction
-  * write restriction for certain steps
-
-### Acceptance Criteria
-
-* policy violations block execution predictably
-
-### Dependencies
-
-TASK-008
-TASK-026
-
----
-
-# 11. Phase 7 — Memory Layer
-
-## [x] TASK-028: Implement memory service abstraction
-
-### Objective
-
-Create a generic memory service interface.
-
-### Work
-
-Support:
-
-* working memory
-* episodic memory
-* semantic memory
-* consolidation
-* invalidation
-* scoped retrieval
-
-### Acceptance Criteria
-
-* kernel can read and write memory through one abstraction
-
-### Dependencies
-
-TASK-003
-
----
-
-## [x] TASK-029: Implement Graphiti adapter
-
-### Objective
-
-Connect Loom memory service to Graphiti.
-
-### Work
-
-* Implement create/read/update/delete flows for episodic entries where appropriate.
-* Support scoped retrieval by workflow version, domain pack, role, and entity.
-* Support writeback after task completion.
-
-### Acceptance Criteria
-
-* Graphiti-backed memory read/write works for pilot scenarios
-
-### Dependencies
-
-TASK-028
-
----
-
-## [x] TASK-030: Implement memory scoping rules
-
-### Objective
-
-Ensure memory retrieval is safe and relevant.
-
-### Work
-
-* Implement scope resolution by:
-
-  * workflow ID
-  * workflow version
-  * role
-  * domain pack
-  * linked entities
-  * task lineage
-* Add active-workflow-first retrieval rule.
-
-### Acceptance Criteria
-
-* stale/deprecated workflow memory is not surfaced by default
-
-### Dependencies
-
-TASK-028
-TASK-029
-
----
-
-## [x] TASK-031: Implement consolidation / sleep
-
-### Objective
-
-Condense episodic memory into semantic memory.
-
-### Work
-
-* Build consolidation job.
-* Summarize useful recurring patterns.
-* Persist higher-order memory artifacts.
-* Attach provenance.
-
-### Acceptance Criteria
-
-* completed tasks result in useful consolidated memory over time
-
-### Dependencies
-
-TASK-029
-
----
-
-## [x] TASK-032: Implement forgetting / invalidation
-
-### Objective
-
-Support memory invalidation when workflows evolve.
-
-### Work
-
-* Implement soft forgetting by excluding deprecated workflow scopes.
-* Implement explicit hard invalidation path.
-* Record invalidation events.
-
-### Acceptance Criteria
-
-* deprecated workflow memory can be hidden from active retrieval
-* explicit invalidation path is supported
-
-### Dependencies
-
-TASK-031
-TASK-015
-
----
-
-# 12. Phase 8 — Observability and Topology
-
-## [x] TASK-033: Implement event bus and audit log
-
-### Objective
-
-Record all important runtime events.
-
-### Work
-
-Emit events for:
-
-* task created
-* triage started/completed
-* workflow selected
-* step entered
-* participant resolved
-* memory read/write
-* step completed
-* step blocked
-* step failed
-* schedule triggered
-* task completed
-
-### Acceptance Criteria
-
-* events are persisted and queryable
-
-### Dependencies
-
-TASK-004
-TASK-023
-
----
-
-## [x] TASK-034: Implement trace service
-
-### Objective
-
-Expose structured run traces.
-
-### Work
-
-* Build trace aggregation layer.
-* Connect to LangSmith where appropriate.
-* Map task/step lifecycle to traceable spans.
-
-### Acceptance Criteria
-
-* a complete workflow run can be inspected step by step
-
-### Dependencies
-
-TASK-033
-
----
-
-## [x] TASK-035: Implement topology generator
-
-### Objective
-
-Render real-time system topology.
-
-### Work
-
-* Generate Mermaid representation from:
-
-  * active roles
-  * active runtime participants
-  * current task bindings
-  * workflow ownership structure
-* Expose topology endpoint or file generation.
-
-### Acceptance Criteria
-
-* Mermaid topology reflects current organization and active assignments
-
-### Dependencies
-
-TASK-006
-TASK-021
-TASK-033
-
----
-
-# 13. Phase 9 — Scheduling
-
-## [x] TASK-036: Implement scheduler service
-
-### Objective
-
-Run time-based actions and workflows.
-
-### Work
-
-* Integrate APScheduler.
-* Load schedules from registry.
-* Support enable/disable/update/delete.
-* Trigger workflow or maintenance action with payload.
-
-### Acceptance Criteria
-
-* schedules execute at expected times
-* schedule runs are logged and traceable
-
-### Dependencies
-
-TASK-011
-
----
-
-## [x] TASK-037: Implement initial maintenance schedules
-
-### Objective
-
-Ship a few useful built-in schedules.
-
-### Work
-
-Implement schedules for:
-
-* nightly memory consolidation
-* stale PR scan
-* docs freshness scan
-* topology regeneration
-
-### Acceptance Criteria
-
-* at least one maintenance schedule works end-to-end in local/dev mode
-
-### Dependencies
-
-TASK-036
-TASK-031
-TASK-035
-
----
-
-# 14. Phase 10 — OpenClaw Ingress
-
-## [x] TASK-038: Implement OpenClaw ingress adapter
-
-### Objective
-
-Receive `/ff ...` requests via OpenClaw and forward them into Loom.
-
-### Work
-
-* Implement adapter or plugin integration.
-* Accept natural-language requests.
-* Forward to intake service.
-* Stream result updates back if possible.
-
-### Acceptance Criteria
-
-* `/ff enhance these docs <url>` reaches Loom and creates a task
-
-### Dependencies
-
-TASK-016
-
----
-
-## [x] TASK-039: Implement admin ingress surface
-
-### Objective
-
-Expose controlled admin operations for workflows, roles, schedules, and packs.
-
-### Work
-
-Support admin operations for:
-
-* workflow publish
-* workflow activate/deprecate
-* role create/update/retire
-* domain pack load
-* schedule create/update/delete
-* memory invalidation trigger
-
-### Acceptance Criteria
-
-* core admin flows can be executed from ingress or API
-
-### Dependencies
-
-TASK-005
-TASK-006
-TASK-010
-TASK-011
-TASK-032
-TASK-038
-
----
-
-# 15. Phase 11 — Docs Pack
-
-## [x] TASK-040: Create Docs Pack manifest
-
-### Objective
-
-Define Docs Pack as the first domain pack.
-
-### Work
-
-Create manifest including:
-
-* pack metadata
-* workflows included
-* roles included
-* capabilities included
-* prompt profiles included
-* policies included
-* connectors/adapters included
-* validations included
-
-### Acceptance Criteria
-
-* Docs Pack loads through domain pack registry
-
-### Dependencies
-
-TASK-010
-
----
-
-## [x] TASK-041: Add Docs Pack roles and capabilities
-
-### Objective
-
-Register initial Docs Pack role and capability definitions.
-
-### Work
-
-Add roles such as:
-
-* docs_ops
-* development
-* technical_writer
-* product_correctness
-* diagramming
-* devex
-* qa
-* infra
-* marketing
-
-Add capabilities such as:
-
-* repo_read
-* repo_write
-* pr_read
-* pr_update
-* pr_create
-* context_build
-* review_analysis
-* content_update
-* markdown_write
-* diagram_generation
-* validation
-* build_check
-* link_check
-* style_check
-* developer_review
-* product_review
-* infra_review
-* market_research
-
-### Acceptance Criteria
-
-* roles and capabilities resolve correctly through registries
-
-### Dependencies
-
-TASK-006
-TASK-007
-TASK-040
-
----
-
-## [x] TASK-042: Add initial Docs Pack workflow markdown files
-
-### Objective
-
-Define the first four workflows in markdown.
-
-### Work
-
-Create workflow markdown files for:
-
-1. Task Authoring
-2. Development
-3. PR Review Addressal
-4. PR Promotion
-
-Use the structured markdown template.
-
-### Acceptance Criteria
-
-* all four workflows parse, compile, and validate
-
-### Dependencies
-
-TASK-015
-TASK-040
-
----
-
-## [x] TASK-043: Add Docs Pack prompt profiles
-
-### Objective
-
-Provide prompt profiles for initial Docs Pack behavior.
-
-### Work
-
-Define profiles for:
-
-* docs writer
-* docs ops
-* PM-style correctness review
-* devex review
-* diagram generation
-* QA review
-* marketing review
-* infra review
-* development/repo context synthesis
-
-### Acceptance Criteria
-
-* prompt profiles resolve cleanly during step execution
-
-### Dependencies
-
-TASK-009
-TASK-040
-
----
-
-## [x] TASK-044: Implement Docs Pack context assembly
-
-### Objective
-
-Assemble repository, documentation, PR, and memory context for docs workflows.
-
-### Work
-
-* Implement OpenCode integration for repository context.
-* Assemble context packs from:
-
-  * repository source
-  * existing docs
-  * PR metadata
-  * memory slices
-* Cache within task scope when appropriate.
-
-### Acceptance Criteria
-
-* docs workflows can gather enough context to draft/update content
-
-### Dependencies
-
-TASK-041
-TASK-042
-TASK-029
-
----
-
-# 16. Phase 12 — Validation and PR Operations
-
-## [x] TASK-045: Implement git adapter
-
-### Objective
-
-Support local branch and commit operations.
-
-### Work
-
-Implement actions for:
-
-* branch creation
-* checkout
-* add/remove/update files
-* commit changes
-* push branch
-
-### Acceptance Criteria
-
-* local branch-based update flow works from Python
-
-### Dependencies
-
-TASK-001
-
----
-
-## [x] TASK-046: Implement gh adapter
-
-### Objective
-
-Support PR create/read/update/promote actions.
-
-### Work
-
-Implement actions for:
-
-* PR create
-* PR read
-* comment retrieval
-* review comment retrieval
-* PR update
-* PR merge/promotion path
-
-### Acceptance Criteria
-
-* Docs Pack workflows can interact with GitHub through gh
-
-### Dependencies
-
-TASK-045
-
----
-
-## [x] TASK-047: Implement PlantUML adapter
-
-### Objective
-
-Support Docs Pack diagram generation and verification.
-
-### Work
-
-* Generate and render `.puml`.
-* Capture compile/render failures.
-* Return structured results.
-
-### Acceptance Criteria
-
-* PlantUML render path works in local dev and containerized environment
-
-### Dependencies
-
-TASK-001
-
----
-
-## [x] TASK-048: Implement verification pipeline
-
-### Objective
-
-Support Docs Pack verification before PR completion/promotion.
-
-### Work
-
-Implement validation actions for:
-
-* markdown/MDX build
-* PlantUML render
-* link checking
-* style/prose checking
-
-### Acceptance Criteria
-
-* verification returns structured pass/fail output
-* failure details are attached to task state
-
-### Dependencies
-
-TASK-047
-TASK-045
-TASK-046
-
----
-
-## [x] TASK-049: Bind validation and PR operations into Docs Pack workflows
-
-### Objective
-
-Make docs workflows produce real PR-based outcomes.
-
-### Work
-
-* Bind validation steps into compiled workflows.
-* Bind PR creation/update steps.
-* Enforce no-direct-merge policy by default.
-
-### Acceptance Criteria
-
-* task authoring workflow can end in PR creation/update
-* PR promotion workflow can enforce checks before promotion path
-
-### Dependencies
-
-TASK-042
-TASK-048
-
----
-
-# 17. Phase 13 — Integration and End-to-End Testing
-
-## [x] TASK-050: Unit tests for all core modules
-
-### Objective
-
-Create robust test coverage for schemas, registries, compiler, state machine, policy engine, memory service, and adapters.
-
-### Acceptance Criteria
-
-* all major modules have meaningful test coverage
-
-### Dependencies
-
-All previous relevant tasks
-
----
-
-## [x] TASK-051: Integration tests for workflow compilation and execution
-
-### Objective
-
-Test markdown workflow → compiled IR → task execution.
-
-### Work
-
-* add fixtures for workflow markdown
-* add fixture domain pack
-* run a full task through kernel with mocked adapters
-
-### Acceptance Criteria
-
-* at least one docs workflow completes end-to-end in integration tests
-
-### Dependencies
-
-TASK-015
-TASK-026
-TASK-049
-
----
-
-## [x] TASK-052: End-to-end test via ingress
-
-### Objective
-
-Simulate user request from `/ff ...` to final result.
-
-### Work
-
-* run full path from ingress to PR or simulated PR result
-* verify traces and topology update
-
-### Acceptance Criteria
-
-* primary happy path works end-to-end
-
-### Dependencies
-
-TASK-038
-TASK-049
-
----
-
-# 18. Phase 14 — Packaging and Developer Environment
-
-## [x] TASK-053: Add Dockerfile
-
-### Objective
-
-Containerize Loom for easy local and deployment usage.
-
-### Requirements
-
-The Dockerfile must support:
-
-* Python runtime
-* system dependencies for git and gh
-* Node or equivalent dependency support for docs build if needed
-* PlantUML runtime support
-* sane caching and layer ordering
-* non-root execution if practical
-* environment-variable-based configuration
-
-### Suggested shape
-
-* Use a slim Python base image.
-* Install system packages:
-
-  * git
-  * gh
-  * curl
-  * Java runtime for PlantUML if needed
-  * Node.js if required for MDX build
-* Copy `pyproject.toml` and lock files first.
-* Install Python dependencies.
-* Copy source tree.
-* Set working directory.
-* Expose app port if API is used.
-* Define a default run command.
-
-### Acceptance Criteria
-
-* `docker build` succeeds
-* container starts Loom successfully
-* docs-related adapters can run inside the container
-
-### Dependencies
-
-TASK-001
-TASK-047
-TASK-048
-
----
-
-## [x] TASK-054: Add flake.nix
-
-### Objective
-
-Provide a reproducible Nix development environment.
-
-### Requirements
-
-The flake should install everything needed for local development, including:
-
-* Python
-* pip/uv/poetry as chosen package manager support
-* git
-* gh
-* Java runtime for PlantUML
-* Node.js for docs build if required
-* shell helpers for running app, tests, linting, formatting
-* environment variable wiring placeholders
-
-### Suggested outputs
-
-* `devShells.default`
-* optional package output if useful later
-
-### Suggested contents
-
-* python interpreter and packaging helpers
-* git
-* gh
-* nodejs
-* jre
-* graphviz if needed by PlantUML paths used
-* common dev utilities
-
-### Acceptance Criteria
-
-* `nix develop` drops user into a working Loom dev shell
-* all core commands run from the Nix shell
-
-### Dependencies
-
-TASK-001
-TASK-047
-TASK-048
-
----
-
-# 19. Phase 15 — Hardening and Cleanup
-
-## [x] TASK-055: Enforce config validation
-
-### Objective
-
-Fail fast on invalid runtime configuration.
-
-### Work
-
-* validate all required env vars and config fields
-* add startup checks for connector availability
-
-### Acceptance Criteria
-
-* app fails fast with clear messages on invalid config
-
-### Dependencies
-
-TASK-002
-
----
-
-## [x] TASK-056: Harden unsupported / blocked flows
-
-### Objective
-
-Ensure user-facing outcomes are clean and explicit.
-
-### Work
-
-* improve unsupported responses
-* improve blocked responses
-* improve failure summaries
-* include actionable detail without leaking internals unnecessarily
-
-### Acceptance Criteria
-
-* user-facing responses are predictable and helpful
-
-### Dependencies
-
-TASK-017
-TASK-026
-
----
-
-## [x] TASK-057: Clean API boundaries
-
-### Objective
-
-Ensure kernel remains generic and domain packs remain isolated.
-
-### Work
-
-* review imports and dependencies
-* remove docs-specific assumptions from kernel modules
-* enforce adapter boundaries
-
-### Acceptance Criteria
-
-* kernel modules do not import Docs Pack internals except through registry/pack interfaces
-
-### Dependencies
-
-All major implementation tasks
-
----
-
-## [x] TASK-058: Final developer documentation
-
-### Objective
-
-Make Loom understandable and runnable for future contributors.
-
-### Work
-
-* update README
-* add local setup guide
-* add architecture references
-* add workflow authoring guide
-* add domain pack authoring guide
-
-### Acceptance Criteria
-
-* new developer can bootstrap Loom with README + flake + Dockerfile
-
-### Dependencies
-
-TASK-053
-TASK-054
-TASK-057
-
----
-
-# 20. Suggested Build Order Summary
-
-If the coding agent needs a condensed order of execution, use this:
-
-1. TASK-001 → TASK-004
-2. TASK-005 → TASK-011
-3. TASK-012 → TASK-015
-4. TASK-016 → TASK-019
-5. TASK-020 → TASK-027
-6. TASK-028 → TASK-032
-7. TASK-033 → TASK-037
-8. TASK-038 → TASK-039
-9. TASK-040 → TASK-044
-10. TASK-045 → TASK-049
-11. TASK-050 → TASK-052
-12. TASK-053 → TASK-054
-13. TASK-055 → TASK-058
-
----
-
-# 21. Minimum Viable v1 Cut
-
-If implementation must be staged, the smallest useful v1 is:
-
-* workflow markdown parser
-* workflow compiler + validator
-* workflow registry
-* role registry
-* capability registry
-* task intake + triage
-* task state machine
-* participant resolver
-* step runner
-* policy engine
-* Graphiti-backed memory read/write
-* OpenClaw ingress
-* Docs Pack with only:
-
-  * Task Authoring Workflow
-  * PR Review Addressal Workflow
-* git + gh integration
-* validation pipeline
-* Dockerfile
-* flake.nix
-
-Everything else can layer on top.
-
----
-
-# 22. Final Instruction to Coding Agent
-
-Do not implement Loom as a docs-only app.
-Do not represent roles as hardcoded bespoke agent files by default.
-Do not represent workflows as hardcoded Python graphs by default.
-Do not bypass the markdown → compiled IR → validated execution flow.
-Do not let a task execute without a selected workflow.
-Do not let deprecated workflow memory leak into active retrieval by default.
-Do not let the Docs Pack contaminate kernel design.
-
-Build the kernel first.
-Then build Docs Pack on top.
-Then prove the architecture through the docs use case.
-
----
-
-# 23. Phase 16 — External Platform Integrations (Real, Not Stubs)
-
-## [x] TASK-059: Replace Graphiti stub with real Graphiti integration
-
-### Objective
-
-Use a real Graphiti backend for episodic/semantic memory operations.
-
-### Work
-
-* Add Graphiti client dependency and typed adapter implementation.
-* Implement authenticated connect/read/write/update/delete flows.
-* Add retry + timeout + circuit-breaker behavior.
-* Add tenant/workspace namespacing support.
-* Add integration tests against a local or mocked Graphiti service.
-
-### Acceptance Criteria
-
-* memory operations execute against Graphiti, not in-memory stub
-* scoped retrieval and invalidation work with real backend
-
-### Dependencies
-
-TASK-028
-TASK-029
-
----
-
-## [x] TASK-060: Implement real OpenClaw integration surface
-
-### Objective
-
-Integrate Loom into OpenClaw as a real plugin/adapter.
-
-### Work
-
-* Implement OpenClaw-compatible ingress contract.
-* Support request ingress, progress streaming, and final response pushback.
-* Add adapter config for endpoint registration and auth.
-* Add end-to-end tests with OpenClaw-compatible payloads.
-
-### Acceptance Criteria
-
-* `/ff ...` requests can flow from OpenClaw to Loom in real integration mode
-* progress and final status are visible in OpenClaw session flow
-
-### Dependencies
-
-TASK-038
-
----
-
-## [x] TASK-061: Integrate OpenAI Agents SDK for participant execution
-
-### Objective
-
-Move participant execution from placeholder logic to real model-backed execution.
-
-### Work
-
-* Add OpenAI Agents SDK dependency.
-* Implement participant runtime bindings using role + prompt profile + tools.
-* Add model/provider configuration per environment.
-* Add deterministic fallback/mocking mode for tests.
-* Add token/cost accounting and logging hooks.
-
-### Acceptance Criteria
-
-* step execution can run with real model calls through configured provider
-* prompt profiles and role policies are applied during execution
-
-### Dependencies
-
-TASK-023
-TASK-043
-
----
-
-## [x] TASK-062: Integrate LangSmith tracing backend
-
-### Objective
-
-Emit real traces/spans/events to LangSmith.
-
-### Work
-
-* Replace placeholder adapter with LangSmith SDK integration.
-* Map task lifecycle and steps to traces and spans.
-* Attach metadata: workflow/version/role/participant/policies.
-* Add toggleable local mode when LangSmith is unavailable.
-
-### Acceptance Criteria
-
-* live runs are visible in LangSmith with step-level traceability
-
-### Dependencies
-
-TASK-034
-
----
-
-## [x] TASK-063: Implement real OpenCode integration for context assembly
-
-### Objective
-
-Use actual OpenCode APIs/CLI for repository context retrieval.
-
-### Work
-
-* Replace local file scan fallback with OpenCode integration path.
-* Add query scopes for docs/files/PR-linked artifacts.
-* Add caching and invalidation for large repo contexts.
-
-### Acceptance Criteria
-
-* docs workflows retrieve context via OpenCode integration path in production mode
-
-### Dependencies
-
-TASK-044
-
----
-
-# 24. Phase 17 — Production Runtime and Security Hardening
-
-## [x] TASK-064: Add production config and secret management
-
-### Objective
-
-Support secure runtime config for production environments.
-
-### Work
-
-* Add typed config for all external integrations.
-* Add secret loading via env + optional secret manager.
-* Add startup validation for required secrets.
-* Add redaction of secrets in logs/events/traces.
-
-### Acceptance Criteria
-
-* app fails fast if required production secrets/config are missing
-* secrets never appear in logs or API responses
-
-### Dependencies
-
-TASK-055
-TASK-059
-TASK-061
-TASK-062
-
----
-
-## [x] TASK-065: Add PostgreSQL production persistence and migration strategy
-
-### Objective
-
-Support production-grade persistence backend and migrations.
-
-### Work
-
-* Add PostgreSQL engine configuration.
-* Add Alembic revisions for all tables and constraints.
-* Add migration CI checks and rollback-tested migration scripts.
-* Add retention and backup guidance.
-
-### Acceptance Criteria
-
-* production DB migrations are reproducible and reversible
-* task/workflow/event integrity constraints are enforced in DB
-
-### Dependencies
-
-TASK-004
-
----
-
-## [x] TASK-066: Add queue-backed async workers for long-running steps
-
-### Objective
-
-Separate API ingress latency from long-running workflow execution.
-
-### Work
-
-* Add worker execution mode and queue transport.
-* Implement job status persistence and idempotency keys.
-* Add retry/backoff/dead-letter strategy.
-* Ensure policy and state-machine invariants hold in async mode.
-
-### Acceptance Criteria
-
-* long-running tasks can execute asynchronously and recover from worker restarts
-
-### Dependencies
-
-TASK-026
-TASK-033
-
----
-
-## [x] TASK-067: Enforce runtime command/tool safety controls
-
-### Objective
-
-Prevent unsafe tool execution in production.
-
-### Work
-
-* Add explicit tool allowlists/denylists by role/policy.
-* Add filesystem/network sandbox policy mapping.
-* Add command audit trails with policy decisions.
-* Add secure defaults for destructive actions.
-
-### Acceptance Criteria
-
-* unsafe commands are blocked and auditable
-* policy enforcement is deterministic and test-covered
-
-### Dependencies
-
-TASK-027
-TASK-039
-
----
-
-## [x] TASK-068: Add API authentication and authorization
-
-### Objective
-
-Protect ingress and admin endpoints in production.
-
-### Work
-
-* Add auth middleware (token or OIDC/JWT mode).
-* Add role-based authorization for admin operations.
-* Add audit events for authn/authz success/failure.
-
-### Acceptance Criteria
-
-* unauthorized requests are rejected consistently
-* admin operations are protected by explicit permissions
-
-### Dependencies
-
-TASK-039
-
----
-
-## [x] TASK-069: Container and supply-chain hardening
-
-### Objective
-
-Harden build artifacts for production deployment.
-
-### Work
-
-* Pin system packages and Python dependencies.
-* Add image scanning and SBOM generation.
-* Drop unnecessary Linux capabilities and enforce non-root runtime.
-* Add provenance metadata in CI artifacts.
-
-### Acceptance Criteria
-
-* release image passes vulnerability and policy gates
-
-### Dependencies
-
-TASK-053
-
----
-
-## [x] TASK-070: CI/CD pipeline for release promotion
-
-### Objective
-
-Build a repeatable release pipeline.
-
-### Work
-
-* Add CI jobs for lint/type/tests/integration/e2e.
-* Add artifact build and image publish steps.
-* Add environment promotion workflow (dev -> staging -> prod).
-* Add release notes/changelog generation.
-
-### Acceptance Criteria
-
-* every production release is built and validated through CI/CD gates
-
-### Dependencies
-
-TASK-050
-TASK-051
-TASK-052
-TASK-069
-
----
-
-# 25. Phase 18 — Production Readiness Validation
-
-## [x] TASK-071: Real integration end-to-end test suite
-
-### Objective
-
-Validate Loom against live/staging integrations.
-
-### Work
-
-* Run end-to-end workflows against Graphiti/OpenClaw/OpenAI/LangSmith staging.
-* Add smoke tests for each external connector.
-* Add failure-injection cases for partial outages and retries.
-
-### Acceptance Criteria
-
-* at least one full docs workflow succeeds in staging with real integrations
-* failure modes are handled with explicit blocked/failed outcomes
-
-### Dependencies
-
-TASK-059
-TASK-060
-TASK-061
-TASK-062
-TASK-063
-
----
-
-## [x] TASK-072: Performance, load, and cost validation
-
-### Objective
-
-Establish production SLO and cost baselines.
-
-### Work
-
-* Add load-test scenarios for concurrent `/ff` requests.
-* Measure latency by phase: triage, compile, execution, persistence.
-* Add model token/cost telemetry and budget guardrails.
-* Tune worker concurrency and DB settings.
-
-### Acceptance Criteria
-
-* defined throughput/latency targets are met in staging
-* cost reports are generated per workflow run
-
-### Dependencies
-
-TASK-066
-TASK-071
-
----
-
-## [x] TASK-073: Security and compliance validation
-
-### Objective
-
-Validate production security posture.
-
-### Work
-
-* Add SAST/DAST/dependency scanning in CI.
-* Add threat model and mitigation checklist.
-* Add PII handling rules for memory/traces/logs.
-* Add penetration-test findings and remediation tracking.
-
-### Acceptance Criteria
-
-* critical/high findings are remediated or explicitly risk-accepted
-
-### Dependencies
-
-TASK-064
-TASK-067
-TASK-068
-TASK-069
-
----
-
-## [x] TASK-074: Operational runbooks and SRE readiness
-
-### Objective
-
-Make Loom operable in production.
-
-### Work
-
-* Define SLO/SLI and alert thresholds.
-* Add dashboards for task states, failures, queue depth, connector health.
-* Write runbooks for incidents: provider outage, DB outage, stuck workflows.
-* Define backup/restore and disaster-recovery procedure.
-
-### Acceptance Criteria
-
-* on-call team can detect, triage, and recover common failure modes
-
-### Dependencies
-
-TASK-070
-TASK-071
-
----
-
-## [x] TASK-075: Final production go-live gate
-
-### Objective
-
-Authorize production launch through explicit readiness criteria.
-
-### Work
-
-* Create go-live checklist across architecture, security, reliability, and operations.
-* Require signoff from engineering, security, and platform owners.
-* Freeze and tag release candidate.
-
-### Acceptance Criteria
-
-* go-live checklist is fully green and signed off
-* release candidate is deployable with rollback procedure
-
-### Dependencies
-
-TASK-072
-TASK-073
-TASK-074
-
----
-
-# 26. Suggested Production Build Order Addendum
-
-After TASK-058, execute:
-
-1. TASK-059 -> TASK-063
-2. TASK-064 -> TASK-070
-3. TASK-071 -> TASK-075
-
----
-
-# 27. Production Reality Cut (Minimum for Real Deployment)
-
-A practical minimum before production deployment:
-
-* TASK-059 Graphiti real integration
-* TASK-060 OpenClaw real integration
-* TASK-061 OpenAI Agents SDK integration
-* TASK-062 LangSmith integration
-* TASK-064 secret/config hardening
-* TASK-065 PostgreSQL + migrations
-* TASK-067 tool safety controls
-* TASK-068 API authn/authz
-* TASK-069 container hardening
-* TASK-070 CI/CD release gates
-* TASK-071 real integration e2e
-* TASK-073 security validation
-* TASK-074 operational runbooks
-* TASK-075 go-live gate
-
-Everything else can layer in parallel but these are the minimum deployment-critical items.
-
----
-
-# 28. Phase 19 — GUI Productization (Production-Ready Control Plane)
-
-## [x] TASK-076: Define GUI information architecture and API contracts
-
-### Objective
-
-Define a stable control-plane IA for all first-class Loom entities.
-
-### Work
-
-* Define GUI sections for:
-  * workflows
-  * agents/roles
-  * capabilities
-  * policies
-  * prompt profiles
-  * domain packs
-  * schedules
-  * tasks/runs
-  * traces/events
-  * memory scopes
-  * integrations status
-* Define API contract map (`GET/POST/PATCH/DELETE`) for each entity.
-* Define canonical frontend DTOs and server response envelopes.
-
-### Acceptance Criteria
-
-* API and GUI entity maps are documented and implemented consistently
-* no hidden entity operations require direct DB access
-
-### Dependencies
-
-TASK-039
-TASK-058
-
----
-
-## [x] TASK-077: Add production-grade GUI authn/authz
-
-### Objective
-
-Secure GUI and API operations for production usage.
-
-### Work
-
-* Add session/token auth for GUI.
-* Add role-based authorization for action classes:
-  * viewer
-  * operator
-  * admin
-* Restrict dangerous actions (activate/deprecate, invalidation, promotion, deletes) to admin/operator policy.
-* Add auth failure audit events.
-
-### Acceptance Criteria
-
-* unauthorized GUI/API actions are denied with clear errors
-* permissions map is explicit, tested, and documented
-
-### Dependencies
-
-TASK-068
-
----
-
-## [x] TASK-078: Implement secure frontend transport posture
-
-### Objective
-
-Harden browser surface for production.
-
-### Work
-
-* Add CSRF protection strategy for mutating requests.
-* Add CSP and security headers.
-* Add cookie/session hardening where applicable.
-* Add XSS-safe rendering practices in workflow markdown/editor views.
-
-### Acceptance Criteria
-
-* security headers are present and validated
-* mutating actions are CSRF-safe
-
-### Dependencies
-
-TASK-077
-
----
-
-## [x] TASK-079: Schema-driven CRUD forms with strong validation
-
-### Objective
-
-Make CRUD reliable and safe for operators.
-
-### Work
-
-* Build schema-driven forms for all entities.
-* Add field-level validation and user-facing error mapping.
-* Add optimistic + pessimistic update modes where appropriate.
-* Add conflict handling for versioned entities.
-
-### Acceptance Criteria
-
-* CRUD operations can be performed from GUI without malformed payloads
-* validation errors are actionable and non-ambiguous
-
-### Dependencies
-
-TASK-076
-
----
-
-## [x] TASK-080: Workflow version lifecycle UX
-
-### Objective
-
-Enable complete workflow lifecycle from GUI.
-
-### Work
-
-* Add create draft / edit draft / compile / validate / activate / deprecate / archive actions.
-* Add workflow version history timeline.
-* Add side-by-side markdown diff and IR diff view.
-* Add rollback-to-previous-active action with safeguards.
-
-### Acceptance Criteria
-
-* workflow lifecycle can be managed end-to-end in GUI
-* active version switching is explicit and auditable
-
-### Dependencies
-
-TASK-015
-TASK-079
-
----
-
-## [x] TASK-081: Agent builder UX (role + prompt + capabilities + policies)
-
-### Objective
-
-Enable operator-defined agent profiles from GUI.
+**Deliverables:**
+- `docker-compose.yml` with services: `postgres:16`, `redis:7`, `neo4j:5` (optional, for Graphiti)
+- `infra/postgres/init.sql` — creates database and user
+- `infra/redis/redis.conf` — enable streams, set memory limit
+- Verify: `docker-compose up` starts all services cleanly
+- Verify: Python can connect to Postgres and Redis from `src/`
 
-### Work
-
-* Add agent builder panel that composes:
-  * role definition
-  * capability bindings
-  * prompt profile
-  * policy bindings
-  * memory visibility
-* Add compatibility checks against workflows referencing the role.
-
-### Acceptance Criteria
-
-* users can create/update agent definitions without manual YAML edits
-* invalid role-capability-policy combinations are blocked pre-save
-
-### Dependencies
-
-TASK-006
-TASK-007
-TASK-009
-TASK-008
-TASK-079
-
 ---
-
-## [x] TASK-082: Run console with real-time task execution updates
-
-### Objective
 
-Provide operator-grade visibility during execution.
+### TASK-003 — Invariants and PR checklist
+**Depends on:** TASK-001
 
-### Work
+**Deliverables:**
+- `INVARIANTS.md` at repo root — copy all 10 invariants from ARCHITECTURE.md, one per section with a short implementation note for each
+- `CODING_GUIDELINES.md` PR checklist section visible in repo
+- `docs/decisions/` directory — empty, for future ADRs
 
-* Add run console with streaming updates (SSE/WebSocket).
-* Show state transitions, active step, participants, policy checks, and outcomes.
-* Support run controls:
-  * trigger
-  * retry step (if policy allows)
-  * mark blocked/failed with reason
-
-### Acceptance Criteria
-
-* operators can monitor and control active runs from GUI
-* console reflects live task progression with trace correlation
-
-### Dependencies
-
-TASK-033
-TASK-034
-TASK-066
-
 ---
-
-## [x] TASK-083: Topology and memory views in GUI
-
-### Objective
-
-Expose architecture-level system understanding to operators.
 
-### Work
+## Phase 1 — Task Store + Event Bus
+**Goal:** Tasks can be created, transitioned, and events flow through the bus into the log.
+**Effort:** 5 days
 
-* Add topology visualization pane (Mermaid rendered).
-* Add memory scope explorer by workflow/role/entity/task lineage.
-* Add memory invalidation controls with confirmation workflows.
+**Integration test gate:** `tests/integration/test_phase1.py`
+- Create a task → verify it exists in Postgres with correct fields
+- Transition task state → verify version incremented, history row appended
+- Emit event from bus → verify it appears in raw event log
+- Emit duplicate event → verify consumer skips it (idempotency)
 
-### Acceptance Criteria
-
-* operators can inspect current topology and memory scopes visually
-* memory actions are explicit and auditable
-
-### Dependencies
-
-TASK-035
-TASK-030
-TASK-032
-
 ---
-
-## [x] TASK-084: Audit and incident panel
-
-### Objective
-
-Centralize operational forensic visibility.
-
-### Work
 
-* Add searchable audit/events panel.
-* Add filters by task/workflow/role/event severity/time range.
-* Add incident marker/export for postmortems.
+### TASK-004 — Task store schema and migrations
+**Depends on:** TASK-002
 
-### Acceptance Criteria
+Create the task store schema.
 
-* operators can investigate failures without raw DB access
+**Deliverables:**
+- `src/core/task_store/models.py` — Pydantic models: `Task`, `TaskHistory`, `TaskArtifact`, `TaskBlocker`
+- `infra/postgres/migrations/001_task_store.sql`:
+  ```sql
+  tasks (task_id, workflow_id, workflow_version, owner_agent_id, team_id,
+         current_state, version, retry_count, escalation_count, sla_deadline,
+         status, created_at, updated_at, closed_at)
+  task_history (id, task_id, from_state, to_state, agent_id, event_id, transitioned_at)
+  task_artifacts (id, task_id, type, reference_url, agent_id, created_at)
+  task_blockers (id, task_id, description, raised_by, raised_at, resolved_at)
+  ```
+- Indexes on: `task_id`, `status`, `team_id`, `owner_agent_id`
+- Migration runner script or Alembic config
 
-### Dependencies
-
-TASK-033
-TASK-074
-
 ---
-
-## [x] TASK-085: UX quality gates (a11y, responsiveness, reliability)
-
-### Objective
-
-Ensure GUI quality for production operators.
-
-### Work
-
-* Add responsive layouts for laptop and desktop.
-* Add accessibility checks (keyboard nav, labels, contrast).
-* Add empty/loading/error states for all panels.
-* Add non-destructive confirmations for dangerous actions.
-
-### Acceptance Criteria
 
-* GUI is usable, accessible, and predictable in standard operator contexts
+### TASK-005 — Task store operations
+**Depends on:** TASK-004
 
-### Dependencies
+Implement all 7 operations. Each must be unit tested independently.
 
-TASK-079
+**Deliverables:**
+- `src/core/task_store/operations.py`:
+  - `create_task(workflow_id, workflow_version, owner_agent_id, team_id, sla_deadline?) -> Task`
+  - `transition_state(task_id, to_state, current_version, agent_id, event_id) -> Task` — raises `StaleTaskVersionError` on version mismatch
+  - `record_blocker(task_id, description, raised_by) -> TaskBlocker`
+  - `resolve_blocker(task_id, blocker_id) -> TaskBlocker`
+  - `attach_artifact(task_id, type, reference_url, agent_id) -> TaskArtifact`
+  - `escalate(task_id, reason, agent_id) -> Task` — increments escalation_count, updates owner
+  - `close_task(task_id, outcome, agent_id) -> Task`
+- `src/core/exceptions.py` — `StaleTaskVersionError`, and other custom exceptions
+- `tests/unit/test_task_store.py` — one test per operation, including version mismatch test
 
 ---
 
-## [x] TASK-086: GUI test strategy and release gates
+### TASK-006 — Event bus producer and consumer
+**Depends on:** TASK-002
 
-### Objective
+**Deliverables:**
+- `src/core/event_bus/schemas.py` — Pydantic models for all 8 event types. Every model includes `event_id: UUID`, `idempotency_key: str`, `sequence_number: int`, `produced_at: datetime`
+- `src/core/event_bus/producer.py` — `async def emit(event: BaseEvent) -> None` using Redis Streams (`XADD`)
+- `src/core/event_bus/consumer.py` — consumer group wrapper, `async def consume(stream, group, handler)`, includes `event_id` dedup check against a Redis SET with TTL
+- `src/core/event_bus/raw_log.py` — appends every consumed event to `raw_events` Postgres table
+- `infra/postgres/migrations/002_raw_event_log.sql` — `raw_events(event_id, stream, payload jsonb, received_at)`
+- `tests/unit/test_event_bus.py` — emit, consume, dedup
 
-Ensure GUI behavior remains stable during iteration.
-
-### Work
-
-* Add frontend unit tests for state/actions.
-* Add e2e tests for critical flows:
-  * publish workflow
-  * create/update agent
-  * run task
-  * inspect trace
-  * invalidate memory
-* Add GUI quality checks to release pipeline.
-
-### Acceptance Criteria
-
-* regressions in primary GUI flows are caught pre-release
-
-### Dependencies
-
-TASK-085
-TASK-070
-
 ---
-
-# 29. Phase 20 — Tool Bootstrap via flake.nix and Local Stack Orchestration
 
-## [x] TASK-087: Define external tool bootstrap matrix and pinning policy
+### TASK-007 — Phase 1 integration test
+**Depends on:** TASK-005, TASK-006
 
-### Objective
+Write and pass `tests/integration/test_phase1.py`. See gate criteria above. Do not proceed to Phase 2 until this passes cleanly.
 
-Define exactly how each external tool is obtained, versioned, and verified.
-
-### Work
-
-* Create matrix for:
-  * OpenClaw
-  * OpenCode
-  * Graphiti client/runtime
-  * OpenAI SDK
-  * LangSmith SDK
-  * gh/git/PlantUML/node/java
-* Define source strategy per tool:
-  * Nix package
-  * flake input
-  * containerized sidecar
-  * pip package
-* Define pinning + upgrade cadence + compatibility constraints.
-
-### Acceptance Criteria
-
-* every dependency has a deterministic source and versioning strategy
-
-### Dependencies
-
-TASK-059
-TASK-060
-TASK-061
-TASK-062
-TASK-063
-
 ---
-
-## [x] TASK-088: Extend flake.nix with pinned toolchain inputs and wrappers
 
-### Objective
+## Phase 2 — Workflow Engine
+**Goal:** Markdown workflow files are loaded, matched against tasks, and drive a LangGraph state machine.
+**Effort:** 8 days
 
-Make `nix develop` sufficient to run Loom + integrations locally.
+**Integration test gate:** `tests/integration/test_phase2.py`
+- Load a workflow file → verify it appears in registry with correct fields
+- Match a task description with exact tags → verify deterministic match
+- Match an ambiguous task → verify LLM fallback fires
+- Unmatched task → verify escalation event emitted
+- Drive a task through all states in a test workflow → verify history correct
 
-### Work
-
-* Add/pin required tool inputs.
-* Add shell wrappers/helpers for common tool commands.
-* Add platform-specific notes for Linux/macOS differences.
-* Add command verification on shell entry.
-
-### Acceptance Criteria
-
-* `nix develop` provides all required CLI/runtime dependencies for local stack
-
-### Dependencies
-
-TASK-087
-
 ---
-
-## [x] TASK-089: Build local stack bootstrap scripts
-
-### Objective
 
-Automate local environment preparation and connector wiring.
+### TASK-008 — LLM abstraction layer
+**Depends on:** TASK-001
 
-### Work
+This must exist before any LLM call is written anywhere else.
 
-* Add scripts to:
-  * initialize `.env.local` template
-  * validate required env vars
-  * run migrations
-  * load docs pack
-  * verify connector availability
-* Add `make` or script entrypoints for one-command startup.
+**Deliverables:**
+- `src/core/llm/models.py` — `ModelRole(str, Enum)`: `FAST`, `REASONING`, `LOCAL`
+- `src/core/llm/schemas.py` — `Message`, `Tool`, `LLMResponse` (provider-agnostic Pydantic models)
+- `src/core/llm/config.py` — `LLMConfig(BaseSettings)`: `fast_model`, `reasoning_model`, `local_model`, `fallback_model`, `max_retries`, `timeout_seconds`
+- `src/core/llm/client.py`:
+  - `async def complete(role, messages, tools?, temperature?) -> LLMResponse`
+  - `async def complete_structured(role, messages, response_model) -> BaseModel`
+  - Internal `_call_litellm()` — never called outside this file
+- `tests/unit/test_llm_client.py` — mock litellm, verify role resolves to correct model string
 
-### Acceptance Criteria
-
-* new developer can bootstrap local Loom stack with one command
-
-### Dependencies
-
-TASK-088
-TASK-065
-
 ---
-
-## [x] TASK-090: Add optional local integration stack (docker-compose)
-
-### Objective
-
-Run Loom with local companion services for integration testing.
-
-### Work
 
-* Add compose stack for:
-  * Loom app
-  * optional Graphiti service (or mock)
-  * optional tracing sink
-  * SQLite/PG mode selection
-* Add documented profiles for minimal vs full integration mode.
+### TASK-009 — Workflow file parser and validator
+**Depends on:** TASK-008
 
-### Acceptance Criteria
+**Deliverables:**
+- `src/core/workflow_engine/schemas.py` — `WorkflowDefinition` Pydantic model with all required fields: `id`, `version`, `level`, `trigger`, `tags`, `states`, `success_condition`, `escalate_if`
+- `src/core/workflow_engine/parser.py` — reads markdown files, extracts YAML frontmatter, validates against schema, returns `WorkflowDefinition`
+- Parser rejects invalid files with a clear log message — does not crash the service
+- `tests/unit/test_parser.py` — valid file, missing field, invalid level, duplicate id
 
-* `docker compose` can run a usable local integration stack
-
-### Dependencies
-
-TASK-089
-
 ---
-
-## [x] TASK-091: Connector health and handshake orchestration
-
-### Objective
-
-Ensure Loom validates external dependencies at startup and runtime.
-
-### Work
-
-* Add health probes for each connector.
-* Add startup handshake checks with actionable diagnostics.
-* Add degraded-mode behavior when optional integrations are unavailable.
 
-### Acceptance Criteria
+### TASK-010 — Workflow registry and hot reload
+**Depends on:** TASK-009
 
-* integration readiness is visible and deterministic before task execution
+**Deliverables:**
+- `src/core/workflow_engine/registry.py` — in-memory store, indexed by `id`, by `level`, and by `tags` (inverted index for deterministic matching)
+- `src/core/workflow_engine/hot_reload.py` — uses `watchdog` to watch `/workflows/` directory, re-parses and re-registers on file change, logs reload events
+- Registry exposes: `register(workflow)`, `get_by_id(id)`, `search_by_tags(tags) -> list[WorkflowDefinition]`, `all_by_level(level) -> list[WorkflowDefinition]`
 
-### Dependencies
-
-TASK-090
-
 ---
-
-## [x] TASK-092: Auto-bootstrap integration bindings in Loom
-
-### Objective
-
-Reduce manual wiring to run integrated workflows.
-
-### Work
-
-* Add connector binding registry initialization from config.
-* Add default binding profiles (`local`, `staging`, `prod`).
-* Add explicit config conflict detection.
-
-### Acceptance Criteria
 
-* Loom starts with coherent integration bindings from environment/profile
+### TASK-011 — Workflow matcher
+**Depends on:** TASK-010, TASK-008
 
-### Dependencies
+Two-stage matching: deterministic first, LLM fallback second.
 
-TASK-091
-TASK-010
+**Deliverables:**
+- `src/core/workflow_engine/matcher.py`:
+  - Stage 1: extract tags from task description (simple keyword extraction, no LLM), look up in registry tag index, return match if found
+  - Stage 2: embed task description via `complete(FAST, ...)` with a structured prompt, rank against all workflow triggers by similarity, return best match if above threshold (default: 0.75)
+  - Stage 3: return `None` if below threshold — caller handles escalation
+- Config: `MATCH_CONFIDENCE_THRESHOLD` env var (default 0.75)
+- Every match attempt is logged with which stage matched and confidence score
+- `tests/unit/test_matcher.py` — exact tag match, LLM fallback match, no match
 
 ---
 
-## [x] TASK-093: Toolchain conformance tests
+### TASK-012 — State machine runtime
+**Depends on:** TASK-011, TASK-005, TASK-006
 
-### Objective
+**Deliverables:**
+- `src/core/workflow_engine/runtime.py` — LangGraph-based state machine:
+  - Builds a graph from `WorkflowDefinition.states` (linear transitions in V1)
+  - Each node calls the appropriate agent to complete the state
+  - Transition guard: calls `complete(FAST, ...)` to evaluate whether success condition is met before advancing
+  - On guard pass: calls `transition_state()` in task store, emits `task.state_transition` event
+  - On guard fail: increments retry, checks `escalate_if` condition, emits `workflow.escalated` if met
+  - On final state: calls `close_task()`, emits `task.completed`
+- `tests/unit/test_runtime.py` — mock agent calls, verify state transitions, verify escalation on max retries
 
-Verify bootstrap and integration correctness continuously.
-
-### Work
-
-* Add tests for:
-  * flake environment readiness
-  * docker stack readiness
-  * connector handshake correctness
-  * local bootstrap scripts idempotency
-
-### Acceptance Criteria
-
-* bootstrap regressions fail fast in local and CI contexts
-
-### Dependencies
-
-TASK-086
-TASK-092
-
 ---
-
-# 30. Phase 21 — Local Operator Experience Completion
 
-## [x] TASK-094: End-to-end "create your own workflow in GUI" golden path
+### TASK-013 — Phase 2 integration test
+**Depends on:** TASK-012
 
-### Objective
+Write and pass `tests/integration/test_phase2.py`. See gate criteria above.
 
-Guarantee local operator success with zero manual backend edits.
-
-### Work
-
-* Define and test golden flow:
-  1. launch Loom via Docker or nix
-  2. open GUI
-  3. create role/agent
-  4. create capabilities/policies/prompts
-  5. publish workflow markdown
-  6. run task and observe trace
-* Add guided UI hints and defaults for this flow.
-
-### Acceptance Criteria
-
-* user can create and run custom agentic workflow from GUI in local mode
-
-### Dependencies
-
-TASK-081
-TASK-082
-TASK-092
-
 ---
-
-## [x] TASK-095: Final local bootstrap docs and troubleshooting guide
 
-### Objective
+## Phase 3 — Agent Layer
+**Goal:** Full orchestration loop working end to end. Human task in, result back.
+**Effort:** 12 days
 
-Make local-first usage self-serve and reliable.
+**Integration test gate:** `tests/integration/test_phase3.py`
+- Submit task via API → KR matches workflow → creates task → delegates to generalist
+- Generalist matches team workflow → assigns to specialist
+- Specialist executes → returns result → generalist reviews → notifies KR
+- KR closes task → human notified
+- Verify task history shows all state transitions
 
-### Work
-
-* Document Docker path and Nix path side-by-side.
-* Add troubleshooting for missing tools, auth issues, connector failures.
-* Add common error playbook and quick-fix commands.
-
-### Acceptance Criteria
-
-* first-time user can get Loom + GUI + integrations running locally without engineering intervention
-
-### Dependencies
-
-TASK-094
-TASK-093
-
 ---
 
-# 31. Suggested Build Order Addendum (GUI + Bootstrap)
+### TASK-014 — Agent identity loader
+**Depends on:** TASK-008
 
-After TASK-075, execute:
+**Deliverables:**
+- `src/agents/base/identity.py` — `AgentConfig` Pydantic model, `load_identity(agent_id) -> AgentConfig` reads from `/agents_config/{agent_id}.json`
+- `agents_config/` — JSON files for: `kite_runner.json`, `engineering_generalist.json`, `frontend_specialist.json`
+- Validate `authority_level` (must be `kr | generalist | specialist`)
+- Validate `model_role` (must be `fast | reasoning`)
+- Validate `memory_scope` (must be `agentic_only | agentic_and_team | agentic_team_and_org`)
+- `tests/unit/test_identity.py`
 
-1. TASK-076 -> TASK-086
-2. TASK-087 -> TASK-093
-3. TASK-094 -> TASK-095
-
 ---
-
-# 32. Local-First Reality Cut (GUI + Tool Bootstrap)
 
-Minimum to satisfy local-first operator experience:
+### TASK-015 — Specialist agent
+**Depends on:** TASK-014, TASK-012
 
-* TASK-076
-* TASK-079
-* TASK-080
-* TASK-081
-* TASK-082
-* TASK-087
-* TASK-088
-* TASK-089
-* TASK-091
-* TASK-092
-* TASK-094
-* TASK-095
+**Deliverables:**
+- `src/agents/specialist/agent.py`:
+  - Loads identity config
+  - Queries own agentic memory (stub for now — memory layer is Phase 4)
+  - Assembles system prompt from identity + task context + memory context
+  - Calls `complete(ModelRole.REASONING, ...)` in a tool-use loop via LangGraph
+  - Emits `agent.tool_call` event for every tool call
+  - Self-reflection loop: after completing, calls `complete(FAST, ...)` to verify output meets the state's success condition. If not, retries up to `max_retries`
+  - Returns structured result to generalist
+- `src/agents/specialist/tools.py` — OpenFang tool registry bridge, enforces `permitted_tools` from identity config
+- `src/agents/base/reflection.py` — reusable self-reflection prompt + evaluation logic
+- `tests/unit/test_specialist.py` — mock LLM + tools, verify tool loop, verify reflection
 
-These tasks ensure you can use Docker or `nix develop` to run Loom, manage entities in GUI, and execute custom workflows locally.
-
 ---
-
-# 33. Phase 22 — LiteLLM-First Model Routing Control Plane
-
-## [x] TASK-096: Add model-provider/model/service-binding core entities
-
-### Objective
-
-Introduce first-class model routing entities for provider, model catalog, and service bindings.
-
-### Work
-
-* Add canonical schemas:
-  * model provider
-  * model definition
-  * service-to-model binding
-* Add registries and persistence wiring for these entities.
-* Add cross-entity validation (provider exists for model, model exists for service binding).
-
-### Acceptance Criteria
 
-* entities are persisted and retrievable via registry APIs
-* invalid cross references are rejected
+### TASK-016 — Generalist agent
+**Depends on:** TASK-015
 
-### Dependencies
+**Deliverables:**
+- `src/agents/generalist/agent.py`:
+  - Receives delegated task from KR
+  - Matches team-level workflow via `matcher.py`
+  - Assigns task state to available specialist (FIFO from team config — hardcoded list of specialists in V1)
+  - Calls specialist, awaits result
+  - Output review: calls `complete(FAST, ...)` to evaluate specialist output against success condition
+  - On approval: calls `transition_state()`, emits event, reports to KR
+  - On rejection: increments retry, reassigns to specialist
+  - On max retries: calls `escalate()`, emits `workflow.escalated`
+- `src/agents/generalist/join_gate.py` — ALL_SUCCESS gate (sequential in V1 — just awaits single specialist result and checks success)
+- `tests/unit/test_generalist.py`
 
-TASK-003
-TASK-004
-
 ---
-
-## [x] TASK-097: Integrate LiteLLM-compatible runtime model routing
-
-### Objective
-
-Route execution services to configured models through LiteLLM-compatible settings and bindings.
-
-### Work
-
-* Add LiteLLM runtime settings and validation.
-* Add resolver service for `service_id -> provider -> model`.
-* Wire step execution to use resolved model/base URL/API key.
-* Add safe fallback behavior when routing is unavailable.
-
-### Acceptance Criteria
-
-* `step_execution` resolves and uses configured LiteLLM route
-* routing metadata is observable without exposing secrets
 
-### Dependencies
+### TASK-017 — Kite Runner
+**Depends on:** TASK-016
 
-TASK-096
+**Deliverables:**
+- `src/agents/kite_runner/agent.py`:
+  - Receives task from API gateway
+  - Matches org-level workflow via `matcher.py`
+  - On match: calls `create_task()`, delegates to correct generalist (hardcoded team→generalist map in V1)
+  - On no match: emits `workflow.escalated`, notifies human via notification stub
+  - Notification stub: `notify_human(task_id, message)` — logs to stdout + writes to a `notifications` Postgres table (no real notification in V1)
+- `src/agents/kite_runner/polling.py` — background task, runs every 5 minutes, queries tasks with `status=open` older than threshold, emits `workflow.escalated` if stuck
+- `tests/unit/test_kite_runner.py`
 
 ---
 
-## [x] TASK-098: Add GUI/API CRUD for model routing entities
+### TASK-018 — API gateway
+**Depends on:** TASK-017
 
-### Objective
+**Deliverables:**
+- `src/api/gateway.py` — FastAPI app
+- `src/api/routes/tasks.py`:
+  - `POST /tasks` — accepts `{description: str}`, passes to KR, returns `{task_id, status}`
+  - `GET /tasks/{task_id}` — returns full task record + history
+  - `GET /tasks` — list tasks, filter by `status`, `team_id`
+- `src/api/routes/health.py` — `GET /health` returns Postgres + Redis connectivity status
+- `tests/unit/test_api.py`
 
-Allow operators to manage LiteLLM routing end-to-end from the control plane.
-
-### Work
-
-* Add UI API endpoints for:
-  * model providers
-  * models
-  * service bindings
-  * service route resolution preview
-* Add GUI panels and actions for CRUD + resolve.
-* Add guardrails for delete conflicts.
-
-### Acceptance Criteria
-
-* operator can create/edit/delete providers, models, and bindings in GUI
-* route resolution is visible in GUI/API
-
-### Dependencies
-
-TASK-096
-TASK-097
-
 ---
-
-## [x] TASK-099: Extend local bootstrap/docs for LiteLLM
 
-### Objective
+### TASK-019 — Phase 3 integration test
+**Depends on:** TASK-018
 
-Make LiteLLM setup discoverable and local-first.
+Write and pass `tests/integration/test_phase3.py`. This is the first full end-to-end loop. Budget 2 days — prompt tuning and integration debugging will be needed. Do not move to Phase 4 until this passes.
 
-### Work
-
-* Add LiteLLM env vars to local bootstrap templates.
-* Document LiteLLM routing workflow in README/runbooks.
-* Expose routing status in integration status output.
-
-### Acceptance Criteria
-
-* new users can configure LiteLLM with documented env vars
-* integration status clearly reports routing setup
-
-### Dependencies
-
-TASK-097
-TASK-098
-
 ---
-
-## [x] TASK-100: Add verification for model routing and LiteLLM path
-
-### Objective
 
-Protect model routing behavior from regressions.
+## Phase 4 — Memory Layer
+**Goal:** Completed tasks write structured facts to Graphiti. New tasks retrieve relevant context.
+**Effort:** 10 days
 
-### Work
+**Integration test gate:** `tests/integration/test_phase4.py`
+- Complete a task → verify memory extraction worker fires → facts written to Graphiti agentic tier
+- Run a second identical task → verify specialist receives context from memory
+- Verify generalist reads team memory, not agentic memory
+- Verify KR reads org memory only
 
-* Add unit/integration/e2e tests for:
-  * registry CRUD and validation
-  * runtime routing resolution
-  * UI API CRUD and resolve flow
-* Include validation checks in local test suite.
-
-### Acceptance Criteria
-
-* test suite fails on routing regressions
-* LiteLLM path is covered in automated tests
-
-### Dependencies
-
-TASK-098
-TASK-099
-
 ---
-
-# 34. Phase 23 — Organization & Agent Model Enhancement (NEW)
-
-## Objective
-
-Introduce organization-centric data model and enhanced agent bindings for step execution.
 
-### Design Principles
+### TASK-020 — Graphiti setup
+**Depends on:** TASK-002
 
-* **Single org for now**: Multi-tenancy can be added later
-* **Agent = Role + Binding**: Personality from prompt profile, execution from agent binding
-* **Markdown-first**: Workflows authored in markdown with agent annotations
-* **Agent types**: opencode, litellm, openai (execution targets)
+**Deliverables:**
+- `src/memory/graphiti/client.py` — Graphiti connection, using SQLite backend in dev
+- `src/memory/graphiti/schemas.py` — `MemoryNode` Pydantic model: `content`, `type` (fact), `provenance` (source event_id + task_id), `created_at`, `tier` (agentic|team|org)
+- `src/memory/graphiti/writer.py` — `write_to_tier(node, tier, agent_id)` — enforces access rules (see ARCHITECTURE.md), raises `MemoryAccessDeniedError` if violated
+- `tests/unit/test_graphiti_client.py` — write, read, access denial
 
 ---
 
-## [ ] TASK-101: Add Organization singleton model
+### TASK-021 — Memory extraction worker
+**Depends on:** TASK-020, TASK-006
 
-### Objective
+**Deliverables:**
+- `src/memory/event_worker/worker.py` — Redis Streams consumer, subscribes to `task.state_transition` and `task.completed` events only (ignores all others)
+- `src/memory/event_worker/processor.py`:
+  - Calls `complete(FAST, ...)` with a structured extraction prompt
+  - Extracts: task description, what was attempted, blockers encountered, outcome, key learnings
+  - Writes facts to correct memory tier based on the emitting agent's `authority_level`
+  - Checks `event_id` before writing — skips if already processed (idempotent)
+- Extraction prompt template — returns structured JSON: `{facts: [{content, type, provenance}]}`
+- `tests/unit/test_extraction_worker.py` — mock LLM, verify correct tier written, verify idempotency
 
-Create the top-level organization container for all entities.
-
-### Work
-
-* Add `Organization` Pydantic model to `loom/models.py`:
-  * `org_id: str` (singleton, "default" for now)
-  * `name: str`
-  * `description: str`
-  * `settings: dict[str, Any]`
-  * `default_domain_pack: str`
-  * `created_at`, `updated_at`
-* Create `loom/registries/org_registry.py` for org CRUD
-* Add org-scoped foreign key references to roles, workflows, domain_packs
-* Add database migration for org table
-
-### Deliverables
-
-* Organization model and registry
-* Database schema update
-* Migration script
-
-### Acceptance Criteria
-
-* Organization can be created, updated, retrieved
-* All existing entities can reference the singleton org
-* Migrations apply cleanly
-
-### Dependencies
-
-TASK-003
-TASK-004
-
 ---
-
-## [ ] TASK-102: Design and implement AgentBinding model
-
-### Objective
-
-Define how roles connect to execution targets (opencode, litellm, openai).
-
-### Work
-
-* Add `AgentBinding` Pydantic model:
-  * `binding_type: Literal["opencode", "litellm", "openai"]`
-  * `config: dict[str, Any]` (type-specific settings)
-  
-  Config examples:
-  * opencode: `{"repo_path": "/docs", "cmd": "opencode"}`
-  * litellm: `{"model": "openai/gpt-4", "temperature": 0.2}`
-  * openai: `{"model": "gpt-4o", "api_key_ref": "env:OPENAI_API_KEY"}`
-
-* Extend `RoleDefinition` with:
-  * `agent_binding: AgentBinding | None`
-  * `prompt_profile_id: str | None` (personality/behavior)
-
-### Deliverables
 
-* AgentBinding schema
-* Extended RoleDefinition with agent binding support
-* Validation logic for binding configs
+### TASK-022 — Cascade retrieval and context injection
+**Depends on:** TASK-021
 
-### Acceptance Criteria
+**Deliverables:**
+- `src/memory/graphiti/retrieval.py` — `query_tier(query, tier, agent_id) -> list[MemoryNode]`
+- `src/agents/base/memory.py`:
+  - `query_memory(agent_id, memory_scope, query) -> str` — cascade: query agentic first, add team if scope allows and confidence low, add org if scope allows and confidence still low
+  - Returns assembled context string ready to inject into system prompt
+  - Confidence heuristic for V1: if agentic tier returns 0 results, try next tier
+- Wire into `specialist/agent.py` and `generalist/agent.py` — replace memory stubs from Phase 3
+- `tests/unit/test_memory_retrieval.py` — cascade order, scope enforcement, empty tier fallthrough
 
-* Role can have an optional agent binding
-* Binding configs are validated per type
-* OpenCode binding type is supported
-
-### Dependencies
-
-TASK-003
-TASK-009
-
 ---
-
-## [ ] TASK-103: Extend CompiledWorkflowStep with agent override
-
-### Objective
-
-Allow steps to override role's default agent binding.
-
-### Work
-
-* Extend `CompiledWorkflowStep` model:
-  * `agent_override: str | None` (references another role's binding)
-  * `batch_group_id: str | None` (for batch step assignment)
-  * `prompt_profile_id: str | None` (step-specific personality override)
 
-### Deliverables
+### TASK-023 — Phase 4 integration test
+**Depends on:** TASK-022
 
-* Extended CompiledWorkflowStep schema
-* IR validator updates to check agent override references
+Write and pass `tests/integration/test_phase4.py`. Budget time for qualitative evaluation — run real tasks and manually check what context is retrieved. The test suite validates structural correctness; you validate quality by reading the output.
 
-### Acceptance Criteria
-
-* Step can optionally specify agent_override
-* Validator ensures override references valid role
-* Batch grouping metadata is preserved in IR
-
-### Dependencies
-
-TASK-003
-TASK-014
-
 ---
-
-## [ ] TASK-104: Update markdown parser for agent annotations
-
-### Objective
-
-Parse agent assignment annotations from workflow markdown.
-
-### Work
 
-* Extend `loom/compiler/markdown_parser.py` to extract:
-  * `**Agent:** @agent_name` annotations per step
-  * `**Batch Group:** group_id` annotations
-  * `**Prompt Profile:** profile_id` annotations
-  
-* Add to `ParsedWorkflowDocument`:
-  * `step_agents: dict[str, str]` (step_id -> agent/role reference)
-  * `step_batch_groups: dict[str, str]`
-  * `step_prompt_profiles: dict[str, str]`
+## Phase 5 — Hardening
+**Goal:** The system is reliable under failure conditions.
+**Effort:** 10 days
 
-### Deliverables
+**Integration test gate:** `tests/integration/test_phase5.py`
+- Emit duplicate event → no duplicate state transition
+- Specialist fails 3 times → task escalated to human
+- SLA exceeded → KR detects and escalates
+- Dead task (max retries) → lands in human review queue
+- Replay event stream → no duplicate memory writes
 
-* Enhanced markdown parser
-* Updated ParsedWorkflowDocument model
-
-### Acceptance Criteria
-
-* Markdown with agent annotations parses correctly
-* Annotations are preserved through parsing
-* Missing/invalid annotations fail gracefully
-
-### Dependencies
-
-TASK-012
-TASK-102
-
 ---
-
-## [ ] TASK-105: Update LLM compiler to emit agent bindings
-
-### Objective
-
-Compile agent annotations into workflow IR.
 
-### Work
+### TASK-024 — Idempotency hardening
+**Depends on:** TASK-019
 
-* Update `loom/compiler/llm_compiler.py` to:
-  * Read agent annotations from parsed document
-  * Generate `agent_override` in CompiledWorkflowStep when specified
-  * Generate `batch_group_id` when specified
-  * Generate `prompt_profile_id` when specified
-  
-* Add compiler prompt guidance for agent binding extraction
+Audit every consumer and harden.
 
-### Deliverables
+**Deliverables:**
+- Review all event consumers — add `event_id` dedup check to any that are missing it
+- Add version mismatch test to `test_task_store.py` — concurrent transition attempt must fail gracefully
+- Replay test: manually replay 10 events through the bus, verify task store and memory are unchanged
+- `tests/integration/test_phase5.py` (idempotency section)
 
-* Updated compiler service
-* Compiler tests with agent annotations
-
-### Acceptance Criteria
-
-* Agent annotations in markdown become agent_override in IR
-* Batch groups are preserved in compiled output
-* Prompt profile overrides are compiled correctly
-
-### Dependencies
-
-TASK-013
-TASK-104
-
 ---
-
-## [ ] TASK-106: Update IR validator for agent binding compatibility
-
-### Objective
-
-Validate that agent bindings are compatible with step requirements.
 
-### Work
+### TASK-025 — Retry and escalation logic
+**Depends on:** TASK-017
 
-* Extend `loom/compiler/ir_validator.py`:
-  * Verify agent_override references existing role with valid binding
-  * Check that agent's capabilities satisfy step's required_capabilities
-  * Validate batch_group_id references are consistent
-  
-* Add compatibility matrix generation:
-  * For each role with agent binding, list compatible/incompatible steps
+**Deliverables:**
+- Enforce `max_retries` per state in workflow runtime — read from workflow definition or fall back to global config (`MAX_RETRIES_PER_STATE`, default: 3)
+- `escalate_if` condition evaluated after each retry by `complete(FAST, ...)` against the condition string from workflow file
+- Dead task handler: when `escalation_count` exceeds `MAX_ESCALATIONS` (default: 3), set `status=blocked`, write to `human_review_queue` Postgres table, notify human
+- `infra/postgres/migrations/003_human_review_queue.sql`
+- `tests/unit/test_escalation.py`
 
-### Deliverables
-
-* Enhanced IR validator
-* Role-step compatibility checking
-
-### Acceptance Criteria
-
-* Invalid agent override fails validation with clear error
-* Capability mismatch is detected at validation time
-* Compatibility matrix can be generated for any role
-
-### Dependencies
-
-TASK-014
-TASK-102
-TASK-103
-
 ---
-
-## [ ] TASK-107: Update execution layer for agent binding routing
-
-### Objective
 
-Route step execution through correct adapter based on agent binding.
+### TASK-026 — SLA polling
+**Depends on:** TASK-017
 
-### Work
+**Deliverables:**
+- `src/agents/kite_runner/polling.py` (extend from TASK-017):
+  - Query tasks where `sla_deadline < now()` and `status = open`
+  - Emit `workflow.escalated` event for each breached task
+  - Log breach with `task_id`, `sla_deadline`, `current_state`
+- Config: `SLA_POLL_INTERVAL_SECONDS` (default: 300)
+- `tests/unit/test_sla_polling.py`
 
-* Update `loom/execution/step_runner.py`:
-  * Resolve step's effective agent (role's binding or override)
-  * Route to appropriate adapter based on binding_type:
-    * "opencode" → OpenCodeAdapter for context
-    * "litellm" → ModelRouter for LLM execution
-    * "openai" → OpenAIAgentsAdapter for direct execution
-  
-* Update `loom/execution/context_assembler.py`:
-  * Use agent binding config for context assembly parameters
-
-### Deliverables
-
-* Updated step runner with agent routing
-* Updated context assembler
-
-### Acceptance Criteria
-
-* Step with opencode binding uses OpenCodeAdapter
-* Step with litellm binding uses ModelRouter
-* Step with openai binding uses OpenAIAgentsAdapter
-* Override binding is respected when specified
-
-### Dependencies
-
-TASK-023
-TASK-102
-TASK-103
-TASK-097
-
 ---
-
-## [ ] TASK-108: Add /api/org endpoints
 
-### Objective
+### TASK-027 — Basic evaluation signals
+**Depends on:** TASK-019
 
-Expose organization management via API.
+**Deliverables:**
+- `src/evaluation/signals.py`:
+  - Triggered on `task.completed` event
+  - Computes 3 signals:
+    - `completed_successfully: bool` — was final state reached without escalation?
+    - `rework_count: int` — count of retries across all states (from task_history)
+    - `false_escalation: bool` — escalation occurred but task resolved without human input within 30 min
+  - Writes evaluation record to `task_evaluations` Postgres table
+- `infra/postgres/migrations/004_task_evaluations.sql`
+- `tests/unit/test_evaluation.py`
 
-### Work
-
-* Add to `loom/ingress/admin_adapter.py` or new `loom/ingress/org_adapter.py`:
-  * `GET /api/org` - get organization config
-  * `PUT /api/org` - update organization
-  * `GET /api/org/integrations` - integration health status
-  
-* Add OrgRegistry to dependency injection container
-
-### Deliverables
-
-* Organization API endpoints
-* Integration status aggregation
-
-### Acceptance Criteria
-
-* Org config can be read/updated via API
-* Integration status shows all adapters (OpenCode, GitHub, PlantUML, etc.)
-* Only admin can modify org config
-
-### Dependencies
-
-TASK-039
-TASK-101
-
 ---
-
-## [ ] TASK-109: Update /api/agents endpoints for agent bindings
-
-### Objective
-
-Support agent binding CRUD in agent management API.
-
-### Work
-
-* Update `loom/ui/router.py` agent endpoints:
-  * `POST /api/agents` - create agent with binding
-  * `PUT /api/agents/{role_id}` - update agent binding
-  * `GET /api/agents/{role_id}` - include binding details
-  * `GET /api/agents/{role_id}/compatibility` - show workflow step compatibility
-  
-* Update `AgentBuilderRequest` to include agent_binding field
-
-### Deliverables
-
-* Updated agent API with binding support
-* Compatibility checking endpoint
-
-### Acceptance Criteria
 
-* Agent can be created with binding via API
-* Agent binding can be updated
-* Compatibility matrix returned for any agent
+### TASK-028 — Smoke test suite
+**Depends on:** TASK-024, TASK-025, TASK-026, TASK-027
 
-### Dependencies
+Write the full unhappy path smoke tests.
 
-TASK-081
-TASK-102
-TASK-106
+**Deliverables:**
+- `tests/integration/test_phase5.py` covering:
+  1. Happy path end-to-end (regression from Phase 3 gate)
+  2. Specialist retry → eventual success
+  3. Specialist max retries → task escalated to human
+  4. Cross-team handoff mid-execution (generalist A → generalist B → back)
+  5. SLA breach → KR detects → human notified
+- All 5 scenarios pass before V1 is considered complete
 
 ---
 
-# 35. Phase 24 — GUI Screens Redesign (Organization-Centric) (NEW)
+## V1 complete milestone
 
-## Objective
+When `tests/integration/test_phase5.py` passes cleanly, V1 is done.
 
-Redesign GUI with 4 main screens: Organization Dashboard, Agents, Workflows, Tasks.
+At this point you have:
+- A working orchestration loop (human → KR → generalist → specialist → result)
+- Reliable task state tracking with optimistic locking
+- Event-driven architecture with idempotent consumers
+- Structured memory that accumulates across tasks
+- Human escalation paths for every failure mode
+- Basic evaluation signals for systematic improvement
 
-### Design Principles
+**Show it to someone. Get feedback. Let that feedback drive V2 priorities.**
 
-* **SPA with routing**: Clean navigation between screens
-* **Organization-first**: Dashboard shows org-level overview
-* **Markdown-first workflow editor**: Split-pane markdown + IR preview
-* **Agent-centric**: Dedicated screen for agent creation/management
-* **Step-level agent assignment**: Assign agents to workflow steps
-
 ---
-
-## [ ] TASK-110: Redesign GUI as SPA with routing
-
-### Objective
-
-Replace monolithic single-page UI with navigable SPA.
-
-### Work
-
-* Update `loom/ui/static/index.html`:
-  * Add navigation sidebar/header with screen links:
-    * Organization (/ui/org)
-    * Agents (/ui/agents)
-    * Workflows (/ui/workflows)
-    * Tasks (/ui/tasks)
-  * Add content areas for each screen (show/hide based on route)
-  * Add client-side routing (hash-based or History API)
-
-* Update `loom/ui/static/app.js`:
-  * Add route handling
-  * Add screen state management
-  * Add navigation guards (auth check)
-
-### Deliverables
 
-* SPA structure with 4 screens
-* Client-side routing
+## V2 backlog (do not build yet)
 
-### Acceptance Criteria
+Add to this list as pain points emerge in V1.
 
-* User can navigate between 4 screens
-* URL updates reflect current screen
-* Page refresh returns to same screen
+- [ ] Parallel workflow branches + join policies
+- [ ] P0–P3 task priority + preemption
+- [ ] Full agent topology model
+- [ ] Semver workflow versioning + in-flight migration
+- [ ] Full 9-metric evaluation layer
+- [ ] Fact vs interpretation split in memory + confidence scoring
+- [ ] Compensation workflows for parallel branch failures
+- [ ] Auto SLA breach escalation (currently polling-based)
+- [ ] Explicit access control matrix (multi-tenant)
+- [ ] Background Hands pattern extraction → workflow suggestions
+- [ ] Neo4j migration for Graphiti (when SQLite gets slow)
+- [ ] Real notification delivery (email/Slack — currently logs only)
 
-### Dependencies
-
-TASK-076
-
 ---
-
-## [ ] TASK-111: Build Organization Dashboard screen
-
-### Objective
 
-Create org-level overview and configuration screen.
+## Phase 6 — UI
+**Goal:** Minimal functional web UI. Non-technical users can submit tasks, track progress, respond to escalations, view live activity, and approve workflows.
+**Effort:** 8 days
 
-### Work
+**Gate:** All 6 pages render correctly, escalation response updates task in backend, SSE feed streams live events, workflow approval changes status in registry.
 
-* Screen layout:
-  * **Header**: Org name, description, edit button
-  * **Integration Status Cards**: 
-    * OpenCode (green/red based on availability)
-    * GitHub / gh
-    * PlantUML
-    * LiteLLM
-    * Graphiti
-    * OpenAI
-    * LangSmith
-  * **Summary Stats**: 
-    * X agents configured
-    * Y workflows active
-    * Z tasks today
-  * **Quick Actions**:
-    * Bootstrap Docs Pack
-    * Run diagnostics
-    * Load sample workflow
-
-* API integration:
-  * `GET /api/org`
-  * `GET /api/integrations/status`
-  * `POST /api/bootstrap/docs-pack`
-
-### Deliverables
+---
 
-* Organization Dashboard UI
-* Integration status visualization
+### TASK-029 — Next.js project scaffold
+**Depends on:** TASK-018 (API gateway complete)
 
-### Acceptance Criteria
+**Deliverables:**
+- `ui/` directory at monorepo root (sibling to `src/`)
+- Next.js 14 with App Router, TypeScript, Tailwind CSS
+- `ui/package.json` — dependencies: `@tanstack/react-query`, `react-hook-form`, `zod`, `lucide-react`, `eventsource-parser`
+- `ui/lib/api.ts` — typed API client wrapping all backend endpoints
+- `ui/lib/types.ts` — TypeScript types mirroring Pydantic models from backend
+- `ui/.env.local.example` — `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- Proxy config in `next.config.js` — `/api/*` proxied to FastAPI in dev
+- Reusable components: `StatusBadge`, `LoadingSpinner`, `ErrorMessage`, `EmptyState`, `PageHeader`
+- `docker-compose.yml` updated — add `ui` service on port 3000
 
-* Org config displayed
-* All integration statuses visible
-* Quick actions work
-* Stats reflect actual system state
+---
 
-### Dependencies
+### TASK-030 — Dashboard page (`/`)
+**Depends on:** TASK-029
 
-TASK-108
-TASK-110
+**Deliverables:**
+- Escalation banner: queries `GET /tasks?status=escalated`, shows count + link if any pending. Sticky at top. Red background. Never dismissible without resolving.
+- Task summary counts: 3 stat cards — Open, Blocked, Completed today. Poll every 30s via React Query.
+- Recent tasks table (last 20): columns — ID (truncated), Description, Team, Status badge, Current state, Last updated. Clicking row navigates to `/tasks/[task_id]`.
+- "Submit new task" button → `/tasks/new`
+- Apply non-technical language map from UI_SPEC.md to all labels
 
 ---
 
-## [ ] TASK-112: Build Agents management screen
-
-### Objective
-
-Dedicated screen for creating and managing agents.
-
-### Work
-
-* **Agent List View**:
-  * Cards showing each agent (role)
-  * Badge showing binding type (opencode/litellm/openai)
-  * Capability tags
-  * Status (active/retired)
-  * Click to view details
-
-* **Create Agent Flow**:
-  * Step 1: Basic info (role_id, title, domain_pack)
-  * Step 2: Select agent type:
-    * OpenCode → form fields: repo_path, cmd
-    * LiteLLM → form fields: provider, model, temperature
-    * OpenAI → form fields: model, api_key_ref
-  * Step 3: Assign capabilities (multi-select from registry)
-  * Step 4: Assign policies (multi-select)
-  * Step 5: Assign prompt profile (dropdown)
-  * Step 6: Review and create
-
-* **Agent Detail View**:
-  * Show all configuration
-  * Edit button
-  * Compatibility matrix (which workflow steps this agent can execute)
-  * Recent tasks using this agent
-  * Retire button
-
-* API integration:
-  * `GET /api/roles`
-  * `GET /api/capabilities`
-  * `GET /api/policies`
-  * `GET /api/prompts`
-  * `POST /api/agents` (with binding)
-  * `PUT /api/agents/{role_id}`
-  * `GET /api/agents/{role_id}/compatibility`
-
-### Deliverables
-
-* Agents screen with list/create/detail views
-* Agent type-specific forms
-* Compatibility matrix display
-
-### Acceptance Criteria
-
-* New agent can be created with all binding types
-* OpenCode agent creation works
-* Compatibility matrix shows green/red for each step
-* Agent list shows type badges
-
-### Dependencies
-
-TASK-109
-TASK-110
+### TASK-031 — Submit task page (`/tasks/new`)
+**Depends on:** TASK-029
 
----
-
-## [ ] TASK-113: Build Workflows screen with markdown editor
-
-### Objective
-
-Enhanced workflow management with markdown-first editing.
-
-### Work
-
-* **Workflow List View**:
-  * Table showing workflows
-  * Columns: workflow_id, active version, status, last updated
-  * Actions: view, edit, activate, deprecate
-
-* **Workflow Editor** (split-pane):
-  * Left: Markdown editor (CodeMirror/Monaco)
-    * Syntax highlighting for markdown
-    * Line numbers
-    * Agent annotation hints (`**Agent:** @agent_name`)
-  * Right: IR Preview / Validation
-    * Show compiled IR as formatted JSON/YAML
-    * Show validation errors inline
-    * Show step list with agent assignments
-
-* **Step Agent Assignment Widget**:
-  * In markdown editor, click step header
-  * Popup: "Assign Agent" dropdown (list of roles with bindings)
-  * Show compatibility indicator (✓ if agent has required capabilities, ✗ if not)
-  * Insert/update `**Agent:** @role_id` annotation in markdown
-
-* **Batch Assignment Feature**:
-  * Checkboxes next to each step in IR preview
-  * "Assign Selected Steps to Agent" dropdown
-  * Apply to all selected steps at once
-  * Preview changes before save
-
-* **Version Management**:
-  * Version history timeline
-  * Diff viewer (markdown diff + IR diff)
-  * Activate/Deprecate/Rollback buttons
-
-* API integration:
-  * `GET /api/workflows`
-  * `GET /api/workflows/{workflow_id}/versions`
-  * `POST /api/workflows/validate`
-  * `POST /api/workflows/publish`
-  * `POST /api/workflows/{workflow_id}/{version}/activate`
-  * `GET /api/workflows/{workflow_id}/diff/{from}/{to}`
-  * `GET /api/roles` (for agent dropdown)
-
-### Deliverables
-
-* Workflows screen with split-pane editor
-* Step agent assignment widget
-* Batch assignment feature
-* Version diff viewer
-
-### Acceptance Criteria
-
-* Markdown editor with agent annotation support
-* Real-time IR preview
-* Step-level agent assignment works
-* Batch assignment works for multiple steps
-* Compatibility check shows visual indicator
-
-### Dependencies
-
-TASK-080
-TASK-104
-TASK-105
-TASK-110
+**Deliverables:**
+- Single form: description textarea (required, 20–2000 chars), priority hint select (Low/Normal/Urgent)
+- Submit calls `POST /tasks`, shows loading state ("Routing your task...")
+- On success: redirect to `/tasks/[task_id]`
+- On error: inline error message, no redirect, form stays filled
+- Zod validation schema on client side matching backend requirements
 
 ---
-
-## [ ] TASK-114: Build Tasks screen (enhanced)
-
-### Objective
 
-Enhanced task console with agent attribution.
+### TASK-032 — Task list page (`/tasks`)
+**Depends on:** TASK-029
 
-### Work
+**Deliverables:**
+- Filter bar: Status multiselect, Team select, Date range (from/to). State persisted in URL query params.
+- Table with all columns from UI_SPEC.md. Paginated at 20/page.
+- "Needs your input" tasks sorted to top regardless of active filter.
+- Empty state component for no results.
+- Each row links to task detail.
 
-* **Task List View**:
-  * Table of tasks
-  * Filters: status, workflow, date range
-  * Columns: task_id, workflow, current step, assigned agent(s), status
+---
 
-* **Task Detail View**:
-  * Request details
-  * Current step with agent info
-  * Execution trace with per-step agent attribution
-  * Step outputs
-  * Events stream
+### TASK-033 — Task detail page (`/tasks/[task_id]`)
+**Depends on:** TASK-031, TASK-032
 
-* **Task Controls**:
-  * Run button
-  * Retry button
-  * Mark blocked/failed with reason
-  * Stream events (SSE)
+This is the most important page. Build it carefully.
 
-* **Intake Widget**:
-  * Text input for natural language request
-  * Domain pack selector
-  * Async checkbox
-  * Submit button
+**Deliverables:**
 
-* API integration (mostly existing):
-  * `GET /api/tasks`
-  * `GET /api/tasks/{task_id}`
-  * `GET /api/tasks/{task_id}/trace`
-  * `GET /api/tasks/{task_id}/events`
-  * `POST /api/tasks/intake`
-  * `POST /api/tasks/{task_id}/run`
+- **Header:** Task ID, description, status badge, current state (human-readable), team, assigned agent, created/updated timestamps, SLA indicator (green "Due in Xh" or red "Overdue by Xh").
 
-### Deliverables
+- **Escalation panel** (visible only when `status = escalated`):
+  - Amber banner with "This task needs your input"
+  - Blocker description (from task_blockers)
+  - Context: what was tried (from task_history)
+  - Textarea: "Provide additional details or instructions" (required)
+  - "Send response" button → `POST /tasks/{task_id}/respond`
+  - "Reassign to different team" button → opens team selector → `POST /tasks/{task_id}/reassign`
+  - On submit: optimistic update, then refetch task
 
-* Enhanced Tasks screen
-* Agent attribution in trace view
-* Intake widget
+- **Progress timeline:** Vertical timeline from task_history. Each item: state name (human-readable), agent name, timestamp, duration since previous state. Most recent at top.
 
-### Acceptance Criteria
+- **Artifacts section:** List of attached artifacts. Type icon + clickable reference link + agent + timestamp. "No outputs yet" empty state.
 
-* Task list shows agent info
-* Trace view shows which agent executed each step
-* Intake creates task successfully
+- **Blockers section:** Active blockers (no resolved_at) shown first in amber. Resolved blockers in gray with strikethrough.
 
-### Dependencies
+- **Technical detail (collapsed):** Raw JSON of task record. Visible only when expanded. Label: "Technical details" with chevron toggle.
 
-TASK-082
-TASK-110
+- Poll every 15 seconds while task is open. Stop polling when status = closed.
 
 ---
-
-## [ ] TASK-115: Add workflow step compatibility visualization
 
-### Objective
+### TASK-034 — Agent activity feed (`/activity`)
+**Depends on:** TASK-029
 
-Visual indicator of which agents can execute which steps.
+**Backend prerequisite:** Add `GET /events/stream` SSE endpoint to FastAPI before building this page. Reads from Redis Streams, converts to SSE, filters out `memory.write` events.
 
-### Work
+**Deliverables:**
+- SSE connection using `EventSource` API with auto-reconnect (exponential backoff, max 30s)
+- Feed renders newest events at top, max 200 items (older items removed from DOM)
+- Each feed item: timestamp (relative — "2m ago"), agent name + role badge, human-readable event description, task ID as link to task detail
+- Apply event → human-readable label map from UI_SPEC.md
+- Filter bar: event type multiselect, agent name input, team select
+- "Pause feed" toggle — freezes rendering, SSE still connected, queues new items
+- "Live" / "Paused" indicator badge
+- Connection status indicator: green dot (connected), amber (reconnecting), red (failed)
+- `GET /events/stream` SSE backend endpoint in `src/api/routes/events.py`
 
-* In workflow editor IR preview:
-  * Show each step with required capabilities
-  * Show indicator per step: how many agents are compatible
-  * Click to see compatible agent list
-  
-* Color coding:
-  * Green: At least one compatible agent
-  * Yellow: Compatible agents exist but none assigned
-  * Red: No compatible agents configured
-
-### Deliverables
+---
 
-* Step compatibility visualization
-* Agent compatibility list per step
+### TASK-035 — Workflow definitions pages (`/workflows`, `/workflows/[workflow_id]`)
+**Depends on:** TASK-029
 
-### Acceptance Criteria
+**Backend prerequisite:** Add workflow API routes before building this page:
+- `GET /workflows` — list from registry
+- `GET /workflows/{workflow_id}` — detail + version history
+- `PATCH /workflows/{workflow_id}/status` — approve or deprecate
 
-* Steps show compatibility status
-* Color coding matches agent availability
-* Can view list of compatible agents
+**Deliverables:**
 
-### Dependencies
+- **List page (`/workflows`):**
+  - Table: workflow ID, display name, level badge (org/team/agentic), version, status badge (draft/active/deprecated), last modified
+  - Filter by level, status
+  - Draft workflows highlighted with amber left border — "waiting for approval"
+  - Empty state
 
-TASK-106
-TASK-113
+- **Detail page (`/workflows/[workflow_id]`):**
+  - Metadata section: id, version, level, status, trigger text, tags as pills
+  - States list: ordered, numbered, each state on its own row
+  - Success condition + escalation conditions in distinct visual blocks
+  - Raw markdown rendered as syntax-highlighted code block (read-only)
+  - If `status = draft`: amber banner "This workflow is pending approval" + "Approve and activate" button
+  - If `status = active`: "Deprecate" button (with confirmation modal — "Are you sure?")
+  - Version history: table of prior versions, each with status and link
+  - On approve/deprecate: optimistic update + refetch
 
 ---
 
-## [ ] TASK-116: GUI integration tests for new screens
+### TASK-036 — SSE backend endpoint
+**Depends on:** TASK-018
 
-### Objective
+This is a backend task but is prerequisite for TASK-034.
 
-Verify new GUI screens work end-to-end.
+**Deliverables:**
+- `src/api/routes/events.py` — `GET /events/stream` SSE endpoint using FastAPI's `StreamingResponse`
+- Reads from Redis Streams consumer group
+- Converts each event to SSE format: `data: {json}\n\n`
+- Filters out `memory.write` events before sending
+- Converts raw event field names to UI-friendly labels (use language map from UI_SPEC.md)
+- Heartbeat every 15 seconds to keep connection alive
+- `tests/unit/test_events_sse.py`
 
-### Work
-
-* Add e2e tests for:
-  * Organization dashboard loads
-  * Agent creation flow (all types)
-  * Workflow creation with agent assignment
-  * Batch step assignment
-  * Task intake and execution
-  * Navigation between screens
-
-### Deliverables
-
-* E2E test suite for new GUI
-
-### Acceptance Criteria
-
-* All 4 screens have basic e2e coverage
-* Critical user flows are tested
+---
 
-### Dependencies
+### TASK-037 — Backend escalation response endpoints
+**Depends on:** TASK-018, TASK-025
 
-TASK-111
-TASK-112
-TASK-113
-TASK-114
+**Deliverables:**
+- `POST /tasks/{task_id}/respond` — accepts `{message: str}`, writes message to task as blocker resolution context, calls `resolve_blocker()`, re-triggers workflow from current state
+- `POST /tasks/{task_id}/reassign` — accepts `{team_id: str}`, calls `escalate()` with new team, updates task owner
+- Both endpoints emit appropriate events to event bus
+- `tests/unit/test_escalation_endpoints.py`
 
 ---
 
-# 36. Build Order Summary (New Phases)
+### TASK-038 — Phase 6 UI integration test
+**Depends on:** TASK-036, TASK-037, TASK-033, TASK-034, TASK-035
 
-After TASK-100, execute:
+**Deliverables:**
+- Manual test checklist (not automated — UI testing is expensive):
+  - [ ] Submit task via form → task appears in dashboard within 30s
+  - [ ] Task progresses through states → timeline updates on detail page
+  - [ ] Task escalates → banner appears on dashboard, escalation panel on detail page
+  - [ ] Human responds to escalation → task resumes, banner disappears
+  - [ ] Activity feed shows live events as task progresses
+  - [ ] New workflow file added to repo → appears as draft in UI
+  - [ ] Approve workflow → status changes to active in UI
+  - [ ] All pages load without errors for a non-technical user mental model test
 
-1. **Phase 23** (Organization & Agent Model):
-   * TASK-101 → TASK-109
-
-2. **Phase 24** (GUI Screens Redesign):
-   * TASK-110 → TASK-116
-
 ---
+
+## V2 UI backlog
 
-# 37. Acceptance Criteria Summary
-
-After completing TASK-101 through TASK-116:
-
-| Requirement | How It's Delivered |
-|-------------|-------------------|
-| **Single org configured** | Organization Dashboard (TASK-111) |
-| **Configure agents first** | Agents screen with binding types including OpenCode (TASK-112) |
-| **Configure workflows** | Workflows screen with markdown editor (TASK-113) |
-| **Steps assigned to agents** | Step-level agent assignment widget (TASK-113) |
-| **Batch step assignment** | Multi-select + batch assign feature (TASK-113) |
-| **Markdown → compiled IR** | Split-pane editor with IR preview (TASK-113) |
-| **Opencode agent available** | OpenCode binding type in agent creation (TASK-112) |
-| **All tools integrated** | Integration status in Org Dashboard (TASK-111) |
-| **GUI screens separated** | 4-screen SPA with navigation (TASK-110) |
+- Email / Slack notification delivery
+- Memory explorer (browse what agents have learned)
+- Evaluation metrics dashboard
+- Visual workflow canvas / editor
+- Role-based access control
+- Mobile-optimised layout
+- Bulk task actions
+- Full-text task search

@@ -1,459 +1,245 @@
 # ARCHITECTURE.md
 
-# Loom Architecture
+## What this system is
 
-**System name:** Loom
-**System type:** Generic workflow-first multi-agent orchestration kernel
-**Primary first-party domain pack:** Docs Pack
-**Initial ingress surface:** `/ff ...` on top of OpenClaw
-**Primary implementation language:** Python
+A virtual organisation orchestration system. It routes work through a hierarchy of LLM-powered agents, tracks every task through a state machine, and accumulates institutional memory over time. The system answers two questions for any piece of work: **what** needs to be done (workflows) and **how** to do it (agents).
 
 ---
 
-# 1. Purpose of this Document
+## Core principle
 
-This document defines the architecture of Loom in enough detail that an implementation agent or engineering team can build it end to end.
+> Workflows own outcomes. Agents own execution.
 
-This document is intentionally split into:
-
-1. **High-Level Design (HLD)** – system shape, major components, responsibilities, runtime flow, and architectural boundaries.
-2. **Low-Level Design (LLD)** – internal models, registries, state machines, compilation pipeline, runtime execution details, storage, APIs, events, memory integration, scheduling, and component contracts.
-
-This architecture document assumes the product direction described in `PRD.md`:
-
-* Loom is a **generic kernel**, not a docs-only app.
-* Workflows are authored in **natural-language markdown**.
-* Workflow markdown is compiled into validated machine-readable IR.
-* Roles and runtime participants are **registry-driven**, not bespoke hardcoded classes.
-* Docs is the **first domain pack**, not the entire system.
+Workflows define what states a task must pass through and the conditions to transition between them. Agents decide how to complete each state. These two concerns are strictly separated.
 
 ---
 
-# 2. Architectural Intent
+## Agent hierarchy
 
-Loom exists to provide **structure to chaos**.
+```
+Human
+  └── Kite Runner (KR)          — org-level orchestrator, never executes work
+        └── Generalist Agent    — team lead, delegates and reviews
+              └── Specialist Agent  — leaf executor, uses tools, produces output
+```
 
-Most agentic systems either:
-
-* become too free-form and difficult to govern,
-* become too hardcoded and inflexible,
-* or become so domain-specific that they are not reusable.
-
-Loom is designed to sit in the middle:
-
-* **thin enough** to remain generic,
-* **strict enough** to enforce workflows,
-* **dynamic enough** to support runtime participant resolution,
-* **safe enough** to keep memory and policies under control,
-* and **extensible enough** to support multiple domain packs.
-
-The key architectural principle is:
-
-> Loom should own orchestration, coordination, compilation, validation, policy, state, memory scoping, and observability — but it should not own domain logic that belongs in a domain pack.
+**Rules:**
+- Specialists are always leaf nodes. They cannot delegate.
+- Generalists are always non-leaf. They never execute work directly.
+- KR is the single org-level orchestrator. There is one KR.
+- Only generalists or KR can initiate cross-team handoffs.
+- Specialists cannot read other agents' memory. Ever.
 
 ---
 
-# 3. System Context
+## Three-tier workflow system
 
-Loom lives between natural-language user requests and domain-specific execution.
+Workflows are human-authored markdown files. They define states, not execution steps.
 
-### Upstream
+| Level | Owner | Purpose |
+|---|---|---|
+| Org-level | KR | Route task to correct team |
+| Team-level | Generalist | Assign to correct specialist, track to completion |
+| Agentic-level | Specialist | Execute a specific type of task |
 
-* OpenClaw acts as the user-facing ingress shell.
-* The user submits requests through `/ff ...`.
-
-### Internal
-
-* Loom classifies the request.
-* Loom selects a workflow.
-* Loom resolves runtime participants.
-* Loom enforces step progression.
-* Loom persists state and memory.
-* Loom delegates domain-specific execution through domain-pack capabilities and connectors.
-
-### Downstream
-
-Depending on the active domain pack, Loom may interact with:
-
-* Graphiti for memory,
-* git and gh for repository and PR operations,
-* OpenCode for repository context assembly,
-* PlantUML for curated diagram generation,
-* Mermaid for topology rendering,
-* LangSmith for runtime observability,
-* validation engines for build/style/link verification.
+Workflow matching is **deterministic first** (tag index), **LLM fallback second**. If no match is found, escalate to human — never guess.
 
 ---
 
-# 4. High-Level Design (HLD)
+## Three-tier memory system (knowledge plane)
 
-## 4.1 Architectural Overview
+| Tier | Scope | Who can read | Who can write |
+|---|---|---|---|
+| Agentic memory | Private per agent | Self only | Self only |
+| Team memory | Shared across team | Generalist + team specialists | Generalist only (via extraction worker) |
+| Org memory | Shared across org | KR + all generalists | KR only (via extraction worker) |
 
-Loom is organized into nine primary layers:
+Memory is backed by **Graphiti** (knowledge graph with temporal indexing).
 
-1. **Ingress Layer**
-2. **Triage Layer**
-3. **Kernel Layer**
-4. **Compilation Layer**
-5. **Execution Layer**
-6. **Registry Layer**
-7. **Memory Layer**
-8. **Observability Layer**
-9. **Domain Pack Layer**
+Memory writes are triggered **only on state transitions** — not on every LLM call. A memory extraction worker reads state transition events from the event bus and writes structured facts to the appropriate tier.
 
-These layers are logical, not necessarily separate deployable services.
-In v1, Loom should be implemented as a single Python application with clean internal module boundaries.
+Retrieval cascade: agentic → team → org. Stop at the tier where confidence is sufficient.
 
 ---
 
-## 4.2 HLD Component Diagram
+## Control plane vs knowledge plane
 
-```mermaid
-flowchart TD
-    U[User via OpenClaw /ff] --> I[Ingress Adapter]
-    I --> T[Triage Engine]
-    T -->|workflow selected| K[Kernel Runtime]
-    T -->|unsupported| R[User Response]
+These are strictly separated. **This separation must never be violated.**
 
-    K --> WR[Workflow Registry]
-    K --> RR[Role Registry]
-    K --> CR[Capability Registry]
-    K --> PR[Policy Registry]
-    K --> DR[Domain Pack Registry]
-    K --> SR[Schedule Registry]
+### Control plane (what IS happening)
+- Workflow runtime (LangGraph state machine)
+- Task / Case Store (Postgres)
+- Event bus (Redis Streams)
+- Raw event log (append-only Postgres)
+- Escalation manager
+- SLA monitor
 
-    K --> C[Workflow Compiler + Validator]
-    C --> CIR[Compiled Workflow IR Store]
+### Knowledge plane (what WAS learned)
+- Graphiti memory (agentic + team + org)
+- Memory extraction worker
+- Cascade retrieval engine
 
-    K --> TS[Task State Store]
-    K --> EP[Execution Planner]
-    K --> ER[Participant Resolver]
-    K --> EX[Execution Coordinator]
+**The bridge is one-way:** the context injector reads from knowledge plane and injects into agent prompts before execution. The knowledge plane never writes back to the control plane. No exceptions.
 
-    EX --> MEM[Memory Service]
-    EX --> OBS[Observability + Trace Service]
-    EX --> TOP[Topology Generator]
-    EX --> DP[Domain Pack Runtime]
+---
 
-    DP --> DOCS[Docs Pack]
+## Task / Case Store
 
-    DOCS --> GRA[Graphiti]
-    DOCS --> GIT[git + gh]
-    DOCS --> OCP[OpenCode]
-    DOCS --> PU[PlantUML]
-    DOCS --> MER[Mermaid]
-    DOCS --> LS[LangSmith]
+Single source of truth for all task state. Lives in Postgres.
 
-    OBS --> R
-    TOP --> R
+**Core fields:**
+```
+task_id             UUID, immutable primary key
+workflow_id         which workflow matched
+workflow_version    version pinned at creation (never changes mid-task)
+owner_agent_id      current responsible agent
+team_id             current owning team
+current_state       state machine position
+version             int, increments on every transition — optimistic lock key
+retry_count         attempts at current state
+escalation_count    times escalated
+sla_deadline        timestamp, breach triggers escalation
+status              enum: open | blocked | escalated | closed
+created_at / updated_at / closed_at
+```
+
+**Relational tables (separate):**
+- `task_history` — append-only, one row per transition
+- `task_artifacts` — references only (URLs/IDs), no raw data
+- `task_blockers` — active and resolved blockers
+
+**The `version` field is the most important field in the schema.** All duplicate-transition protection lives here. Always increment on write, always check on transition (optimistic locking).
+
+---
+
+## Event bus
+
+Redis Streams. All components communicate via events — not direct calls.
+
+**Typed event contracts:**
+```
+task.created
+task.assigned
+task.state_transition
+task.blocked
+task.completed
+workflow.escalated
+memory.write
+agent.tool_call
+```
+
+Every event carries:
+- `event_id` — UUID
+- `idempotency_key` — `task_id:transition`
+- `sequence_number` — per task
+- `produced_at` — timestamp
+
+Delivery is **at-least-once**. All consumers must be idempotent.
+
+---
+
+## Workflow engine
+
+1. Loads markdown workflow files from `/workflows/` on startup and hot-reloads on file change
+2. Indexes workflows by tags for deterministic matching
+3. Falls back to LLM similarity match if no deterministic match
+4. Escalates to human if confidence is below threshold
+5. Runs LangGraph state machine for matched workflow
+6. Guards transitions — checks success condition before advancing state
+7. Logs every transition to audit trail
+
+---
+
+## LLM abstraction layer
+
+All LLM calls go through `src/core/llm/client.py`. Agents never import provider SDKs directly.
+
+```python
+from core.llm.client import complete
+from core.llm.models import ModelRole
+
+response = await complete(role=ModelRole.REASONING, messages=[...])
+```
+
+Model strings are resolved from environment variables at runtime via **LiteLLM**. Swapping providers requires only `.env` changes — zero code changes.
+
+**Two model roles:**
+- `FAST` — workflow matching, memory extraction, intent tagging. Default: `claude-haiku-4-5-20251001`
+- `REASONING` — specialist execution, generalist decisions, self-reflection. Default: `claude-sonnet-4-5`
+
+---
+
+## Tool layer
+
+**OpenFang** provides the tool registry (53+ built-in tools), MCP connector, and Merkle audit trail.
+
+Tool access is per-agent and defined in agent config JSON. Agents only receive the tools listed in their `permitted_tools` field. Nothing else.
+
+**ZeroClaw** is the specialist agent runtime. It loads AIEOS identity configs, sandboxes execution, and intercepts all tool calls for logging.
+
+---
+
+## Org kernel — 10 non-negotiable invariants
+
+These are enforced in code AND documented here. Any PR that violates one of these is wrong by definition.
+
+```
+INV-01  Task state lives only in Task Store. Agents never hold authoritative state locally.
+INV-02  Only workflow runtime may transition task state. No agent writes state directly.
+INV-03  All state transitions emit an append-only event. No silent transitions ever.
+INV-04  Memory never mutates control plane state. Knowledge plane is read-only from control.
+INV-05  No agent reads another agent's private memory. Ever. No exceptions.
+INV-06  Specialists cannot initiate cross-team handoffs. Only generalists or KR.
+INV-07  Workflow definitions are human-owned. Agents may suggest changes, never apply them.
+INV-08  Every in-flight task is pinned to the workflow version that created it.
+INV-09  All event consumers are idempotent. Duplicate events must produce no new side effects.
+INV-10  All escalations are explicit events in the event bus. No implicit failure swallowing.
 ```
 
 ---
 
-## 4.3 Layer Responsibilities
+## V1 scope (what is and is not built yet)
 
-### 4.3.1 Ingress Layer
+### In V1
+- Sequential workflows only (no parallel branches)
+- FIFO queue per team (no priority levels)
+- Simple agent config JSON (no full topology model)
+- v1/v2 workflow versioning (no semver)
+- 3 evaluation signals on task close: `completed`, `rework_count`, `false_escalation`
+- Memory writes: facts only (no interpretation/confidence layer)
+- ALL_SUCCESS join policy only
+- Manual SLA monitoring via KR polling
 
-Responsibility:
-
-* receive natural-language `/ff ...` requests from OpenClaw,
-* normalize request payload,
-* call Loom’s task intake API,
-* stream progress and results back.
-
-The ingress layer should remain intentionally small.
-It should not contain workflow logic.
-
----
-
-### 4.3.2 Triage Layer
-
-Responsibility:
-
-* classify user intent,
-* extract entities,
-* map request to one of the active workflows,
-* reject unsupported requests,
-* create initial task record.
-
-Triage is the gatekeeper.
-No request should enter execution until triage has either:
-
-* selected a workflow,
-* requested minimal missing information,
-* or rejected the request.
+### Deferred to V2
+- Parallel branches + join policies
+- P0–P3 priority + preemption
+- Full agent topology model
+- Semver workflow versioning + migration
+- Full 9-metric evaluation layer
+- Fact vs interpretation split in memory
+- Compensation workflows
+- SLA breach auto-escalation
+- Explicit access control matrix
+- Background Hands pattern extraction
 
 ---
 
-### 4.3.3 Kernel Layer
-
-Responsibility:
-
-* enforce workflow-first execution,
-* manage task lifecycle,
-* manage transitions,
-* resolve roles to runtime participants,
-* apply policies,
-* control memory scope,
-* invoke compilation if needed,
-* coordinate schedules,
-* orchestrate execution without being domain-specific.
-
-This is the core of Loom.
-
----
-
-### 4.3.4 Compilation Layer
-
-Responsibility:
-
-* read natural-language workflow markdown,
-* parse required sections,
-* compile markdown into structured IR,
-* validate syntax and semantics,
-* publish valid versions,
-* reject invalid versions.
-
-This layer allows humans to author workflows naturally without exposing low-level IR as the primary authoring interface.
-
----
-
-### 4.3.5 Execution Layer
-
-Responsibility:
-
-* instantiate or resolve runtime participants,
-* coordinate collaborative steps,
-* pass context and memory,
-* collect outputs,
-* update task state,
-* enforce completion rules,
-* transition to next step.
-
-This layer should remain generic and driven by compiled workflow IR.
-
----
-
-### 4.3.6 Registry Layer
-
-Responsibility:
-
-* store and serve definitions for workflows, roles, capabilities, policies, prompt profiles, domain packs, schedules, and runtime participant templates.
-
-Registries are the backbone of Loom’s genericity.
-
----
-
-### 4.3.7 Memory Layer
-
-Responsibility:
-
-* manage working, episodic, semantic, and consolidated memory,
-* enforce memory visibility rules,
-* bind memory to workflow versions and scopes,
-* support forgetting and invalidation,
-* integrate with Graphiti.
-
----
-
-### 4.3.8 Observability Layer
-
-Responsibility:
-
-* record traces, events, transitions, failures, participant resolution, memory accesses, schedule runs, and final outcomes,
-* expose status and introspection,
-* integrate with LangSmith.
-
----
-
-### 4.3.9 Domain Pack Layer
-
-Responsibility:
-
-* contribute domain-specific workflow markdown,
-* provide role definitions and capabilities,
-* provide connectors and validation adapters,
-* provide prompts and policies,
-* extend the kernel without changing the kernel.
-
-Docs Pack is the first domain pack.
-
----
-
-## 4.4 Primary Runtime Flow
-
-### 4.4.1 Task ingress flow
-
-1. User issues `/ff <natural language request>`.
-2. OpenClaw forwards the request to Loom.
-3. Loom creates a raw task record.
-4. Triage classifies the request and extracts entities.
-5. Triage selects a matching workflow version.
-6. Kernel loads the compiled workflow IR.
-7. Kernel initializes task state.
-8. Execution planner enters the first step.
-9. Participant resolver binds owners and collaborators.
-10. Execution coordinator runs the step.
-11. Outputs, events, and memory updates are recorded.
-12. Task transitions until complete, blocked, or failed.
-13. Result is streamed back to the user.
-
----
-
-## 4.5 Key Architectural Decisions
-
-### 4.5.1 Workflows are authored in markdown
-
-This keeps workflows human-readable and easy to edit.
-
-### 4.5.2 Workflow IR is generated, not authored
-
-This preserves a clean separation between human authoring and machine execution.
-
-### 4.5.3 Roles are abstract; runtime participants are concrete
-
-This allows dynamic resolution and scaling.
-
-### 4.5.4 Steps are ownership-based, not execution-mode-based
-
-A step is described in terms of:
-
-* who owns it,
-* who may collaborate,
-* what capabilities are required,
-* how many runtime participants may be spawned,
-* what completion means.
-
-### 4.5.5 Docs is just a domain pack
-
-This prevents kernel contamination.
-
-### 4.5.6 Memory is scoped and version-aware
-
-This prevents stale retrieval when workflows evolve.
-
-### 4.5.7 Policies are explicit and enforceable
-
-No hidden merge behavior, no invisible write paths, no ambiguous permissions.
-
----
-
-# 5. Low-Level Design (LLD)
-
-## 5.1 Internal Module Layout
-
-Suggested Python package layout:
-
-```text
-loom/
-  app/
-    main.py
-    config.py
-    dependency_injection.py
-
-  ingress/
-    openclaw_adapter.py
-    request_models.py
-    response_models.py
-
-  triage/
-    classifier.py
-    entity_extractor.py
-    selector.py
-    intake_service.py
-
-  kernel/
-    task_service.py
-    workflow_service.py
-    participant_resolver.py
-    execution_planner.py
-    execution_coordinator.py
-    transition_engine.py
-    policy_engine.py
-    state_machine.py
-
-  compiler/
-    markdown_parser.py
-    section_normalizer.py
-    llm_compiler.py
-    ir_models.py
-    ir_validator.py
-    compiler_service.py
-
-  registries/
-    workflow_registry.py
-    role_registry.py
-    capability_registry.py
-    prompt_registry.py
-    policy_registry.py
-    domain_pack_registry.py
-    schedule_registry.py
-    participant_registry.py
-
-  memory/
-    memory_service.py
-    working_memory.py
-    episodic_memory.py
-    semantic_memory.py
-    consolidation_service.py
-    invalidation_service.py
-    graphiti_adapter.py
-
-  execution/
-    step_runner.py
-    collaborative_step_runner.py
-    completion_evaluator.py
-    context_assembler.py
-    runtime_bindings.py
-
-  observability/
-    event_bus.py
-    trace_service.py
-    topology_service.py
-    audit_log_service.py
-
-  scheduling/
-    scheduler_service.py
-    cron_adapter.py
-
-  domainpacks/
-    docs/
-      pack_manifest.yaml
-      workflows/
-      roles/
-      prompts/
-      policies/
-      capabilities/
-      validations/
-      connectors/
-
-  adapters/
-    git_adapter.py
-    gh_adapter.py
-    opencode_adapter.py
-    plantuml_adapter.py
-    mermaid_adapter.py
-    langsmith_adapter.py
-
-  persistence/
-    db_models.py
-    repositories.py
-    migrations/
-```
-
-This structure is a recommendation, not a strict requirement, but the separation of concerns is important.
-
----
-
-## 5.2 Core Domain Model
-
-## 5.2.1 Task Model
-
-A task is the top-level runtime object.
-
-### Suggested fields
-
-* `task_id`
-* `raw_request`
-* `normalized_request`
-* `domain
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Language | Python 3.11+ |
+| Package manager | uv |
+| Data validation | Pydantic v2 |
+| State machine | LangGraph |
+| Specialist runtime | ZeroClaw + AIEOS |
+| LLM routing | LiteLLM |
+| Task store | Postgres 16 (asyncpg + SQLAlchemy) |
+| Event bus | Redis 7 Streams (redis-py async) |
+| Memory / knowledge graph | Graphiti (SQLite in dev, Neo4j in prod) |
+| Tool layer | OpenFang + Composio |
+| API | FastAPI |
+| Testing | Pytest + pytest-asyncio |
+| Logging | Loguru |
+| Config | Pydantic Settings |
+| Local dev | Docker + docker-compose |

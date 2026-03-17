@@ -1,0 +1,614 @@
+
+<style>
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:5px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.panel{display:none}.panel.active{display:block}
+.diagram-wrap{text-align:center;padding:8px 0}
+.diagram-wrap img{max-width:100%;height:auto}
+.error{color:var(--color-text-danger);font-size:13px;padding:12px}
+.loading{color:var(--color-text-secondary);font-size:13px;padding:12px}
+</style>
+
+<div class="tabs">
+  <button class="tab active" onclick="show('kr')">Kite Runner</button>
+  <button class="tab" onclick="show('generalist')">Generalist agent</button>
+  <button class="tab" onclick="show('specialist')">Specialist agent</button>
+  <button class="tab" onclick="show('wfengine')">Workflow engine</button>
+  <button class="tab" onclick="show('memory')">Memory module</button>
+  <button class="tab" onclick="show('eventbus')">Event bus</button>
+  <button class="tab" onclick="show('tooling')">Tool layer</button>
+</div>
+
+<div id="kr" class="panel active"><div class="diagram-wrap"><div class="loading" id="kr-status">Rendering...</div><img id="kr-img" style="display:none"/></div></div>
+<div id="generalist" class="panel"><div class="diagram-wrap"><div class="loading" id="generalist-status">Rendering...</div><img id="generalist-img" style="display:none"/></div></div>
+<div id="specialist" class="panel"><div class="diagram-wrap"><div class="loading" id="specialist-status">Rendering...</div><img id="specialist-img" style="display:none"/></div></div>
+<div id="wfengine" class="panel"><div class="diagram-wrap"><div class="loading" id="wfengine-status">Rendering...</div><img id="wfengine-img" style="display:none"/></div></div>
+<div id="memory" class="panel"><div class="diagram-wrap"><div class="loading" id="memory-status">Rendering...</div><img id="memory-img" style="display:none"/></div></div>
+<div id="eventbus" class="panel"><div class="diagram-wrap"><div class="loading" id="eventbus-status">Rendering...</div><img id="eventbus-img" style="display:none"/></div></div>
+<div id="tooling" class="panel"><div class="diagram-wrap"><div class="loading" id="tooling-status">Rendering...</div><img id="tooling-img" style="display:none"/></div></div>
+
+<script>
+const TABS = ['kr','generalist','specialist','wfengine','memory','eventbus','tooling'];
+function show(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===id));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id));
+}
+function toHex(str){return Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+function render(id,puml){
+  const url=`https://www.plantuml.com/plantuml/svg/~h${toHex(puml)}`;
+  const img=document.getElementById(id+'-img');
+  const status=document.getElementById(id+'-status');
+  img.onload=()=>{status.style.display='none';img.style.display='block';};
+  img.onerror=()=>{status.className='error';status.textContent='Could not load — needs plantuml.com access';};
+  img.src=url;
+}
+
+const kr=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Kite Runner (KR)" {
+
+  package "Input handling" {
+    component "Task receiver\\n(from API gateway)" as TR
+    component "Task parser\\n(extract intent + metadata)" as TP
+  }
+
+  package "Decision core" {
+    component "Org workflow matcher\\n(LLM intent match)" as OWM
+    component "Team selector\\n(picks best team)" as TS
+    component "Escalation handler\\n(no match → ask human)" as EH
+  }
+
+  package "Execution" {
+    component "Org state machine\\nruntime" as OSM
+    component "Task dispatcher\\n(delegates to generalist)" as TD
+    component "Progress tracker\\n(polls team every 5 min)" as PT
+  }
+
+  package "Memory interface" {
+    component "Org memory reader" as OMR
+    component "Org memory writer" as OMW
+  }
+
+  component "Notification engine\\n(notifies human on completion)" as NE
+}
+
+TR --> TP
+TP --> OWM
+OWM --> TS : match found
+OWM --> EH : no match
+EH --> NE : ask human for details
+
+TS --> OSM
+OSM --> TD : delegate to team
+TD --> PT : start tracking
+
+OSM --> OMR : query before acting
+OSM --> OMW : write on state transition
+
+PT --> NE : task done → notify human
+OMW --> NE : trigger on completion
+
+note right of OWM
+  LLM matches incoming
+  task description against
+  all registered org-level
+  markdown workflow files.
+end note
+
+note right of PT
+  Tracks every delegated
+  task. On timeout →
+  escalate to human.
+end note
+@enduml`;
+
+const generalist=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Generalist Agent (Team Lead)" {
+
+  package "Input handling" {
+    component "Task receiver\\n(from KR or another generalist)" as TR
+    component "Context assembler\\n(cascade memory retrieval)" as CA
+  }
+
+  package "Decision core" {
+    component "Team workflow matcher\\n(LLM intent match)" as TWM
+    component "Specialist selector\\n(picks best available agent)" as SS
+    component "Cross-team router\\n(handoff to another team)" as CTR
+    component "Escalation handler" as EH
+  }
+
+  package "Orchestration" {
+    component "Parallel task orchestrator\\n(fork / join)" as PTO
+    component "Join gate\\n(waits for all branches)" as JG
+    component "State machine runtime" as SMR
+  }
+
+  package "Quality gate" {
+    component "Output reviewer\\n(LLM-based review before\\nstate transition)" as OR
+  }
+
+  package "Memory interface" {
+    component "Team memory reader" as TMR
+    component "Team memory writer\\n(1st → 3rd person)" as TMW
+  }
+
+  component "KR notifier\\n(reports outcome upward)" as KRN
+}
+
+TR --> CA
+CA --> TMR : query team memory
+CA --> TWM : assembled context + task
+
+TWM --> SS : matched workflow
+TWM --> CTR : different team needed
+TWM --> EH : no match
+
+SS --> PTO : assign specialists
+PTO --> JG : fork parallel branches
+JG --> OR : all branches complete
+
+OR --> SMR : output approved → transition
+OR --> PTO : needs rework → reassign
+
+SMR --> TMW : write on transition
+TMW --> KRN : notify KR on completion
+EH --> KRN : escalate upward
+
+note right of PTO
+  Spawns parallel specialist
+  workers for independent
+  subtasks. Join gate merges
+  all results before proceeding.
+end note
+
+note right of OR
+  Generalist reviews
+  specialist output quality
+  before transitioning state.
+  Prevents bad outcomes from
+  propagating upward.
+end note
+@enduml`;
+
+const specialist=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Specialist Agent (ZeroClaw + AIEOS)" {
+
+  package "Identity layer (AIEOS)" {
+    component "Agent identity\\n(persistent JSON/markdown)" as AID
+    component "Behavioral config\\n(role, capabilities, constraints)" as BC
+  }
+
+  package "Context loading" {
+    component "Agentic memory reader\\n(private memory query)" as AMR
+    component "Context assembler\\n(retrieves relevant past tasks)" as CA
+  }
+
+  package "Execution core" {
+    component "LLM runtime\\n(claude-sonnet / similar)" as LLM
+    component "Tool executor\\n(calls OpenFang tool registry)" as TE
+    component "Agentic state machine\\n(tracks own subtask states)" as ASM
+    component "Self-reflection loop\\n(validate output before returning)" as SRL
+  }
+
+  package "Output handling" {
+    component "Result packager\\n(structured output to generalist)" as RP
+    component "Blocker reporter\\n(escalates blockers upward)" as BR
+  }
+
+  package "Memory interface" {
+    component "Agentic memory writer\\n(task, blockers, learnings,\\noutcome)" as AMW
+  }
+
+  component "Event emitter\\n(every action → event bus)" as EE
+}
+
+AID --> BC
+BC --> LLM : inject into system prompt
+
+AMR --> CA
+CA --> LLM : context window assembled
+
+LLM --> TE : tool calls
+TE --> LLM : tool results
+LLM --> ASM : state transitions
+ASM --> SRL : task complete?
+
+SRL --> RP : output validated
+SRL --> LLM : retry if not satisfied
+
+RP --> AMW : write outcome
+RP --> EE : emit completion event
+BR --> EE : emit blocker event
+AMW --> EE : emit memory write event
+
+note right of AID
+  AIEOS gives each specialist
+  a stable identity across
+  LLM invocations. Agent
+  "remembers" who it is
+  via memory + config.
+end note
+
+note right of SRL
+  Agent reflects on its own
+  output before returning.
+  Catches hallucinations
+  and low-quality responses
+  before they propagate.
+end note
+@enduml`;
+
+const wfengine=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #FAEEDA
+skinparam noteBorderColor #854F0B
+skinparam linetype ortho
+
+package "Workflow engine" {
+
+  package "Definition layer" {
+    component "Markdown parser\\n(reads .md workflow files)" as MP
+    component "Workflow schema validator\\n(trigger / steps / success /\\nescalate if)" as WSV
+    component "Workflow registry\\n(in-memory indexed store)" as WR
+    component "Hot reload watcher\\n(detects file changes)" as HRW
+  }
+
+  package "Matching layer" {
+    component "Intent extractor\\n(LLM — extracts task intent)" as IE
+    component "Fuzzy matcher\\n(matches intent to workflow)" as FM
+    component "Confidence scorer\\n(threshold check)" as CS
+    component "Escalation trigger\\n(low confidence → human)" as ET
+  }
+
+  package "Runtime layer" {
+    component "State machine runtime\\n(LangGraph-based)" as SMR
+    component "State store\\n(current state per task)" as SS
+    component "Transition guard\\n(checks success condition)" as TG
+    component "Timeout monitor\\n(escalate if stuck)" as TM
+    component "Join gate\\n(parallel branch merge)" as JG
+  }
+
+  package "Audit layer" {
+    component "Transition logger\\n(every state change logged)" as TL
+    component "Merkle chain writer\\n(tamper-evident log)" as MCW
+  }
+}
+
+HRW --> MP : on file change
+MP --> WSV
+WSV --> WR : register valid workflows
+
+IE --> FM : extracted intent
+FM --> WR : lookup candidates
+WR --> CS : ranked matches
+CS --> SMR : above threshold
+CS --> ET : below threshold → escalate
+
+SMR --> SS : persist state
+SMR --> TG : on agent completion
+TG --> SMR : transition approved
+TG --> SMR : stay in state
+TG --> JG : check parallel branches
+JG --> SMR : all done → merge
+SMR --> TM : register timeout
+TM --> ET : on timeout
+
+SMR --> TL : log every transition
+TL --> MCW : append to audit chain
+
+note right of HRW
+  Humans edit markdown files.
+  Engine hot-reloads without
+  any service restart.
+end note
+
+note right of CS
+  Confidence threshold
+  configurable per org.
+  Default: 0.75 cosine
+  similarity or higher.
+end note
+@enduml`;
+
+const memory=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Memory module (Graphiti)" {
+
+  package "Write pipeline" {
+    component "Event consumer\\n(reads from event bus)" as EC
+    component "State transition filter\\n(only meaningful events)" as STF
+    component "Memory extraction agent\\n(LLM — extracts structured facts)" as MEA
+    component "Tone converter\\n(1st → 3rd person\\nfor shared tiers)" as TC
+    component "Conflict resolver\\n(last-write-wins +\\ntemporal ordering)" as CR
+  }
+
+  package "Storage tiers (Graphiti knowledge graph)" {
+    database "Agentic memory\\n(private per agent)" as AM
+    database "Team memory\\n(shared, 3rd person)" as TM
+    database "Org memory\\n(KR + generalists only)" as OM
+  }
+
+  package "Read pipeline" {
+    component "Retrieval engine\\n(semantic + temporal query)" as RE
+    component "Cascade resolver\\n(agentic → team → org)" as CRS
+    component "Confidence evaluator\\n(is context sufficient?)" as CE
+    component "Context assembler\\n(assembles final context window)" as CA
+  }
+
+  package "Graph maintenance" {
+    component "Temporal indexer\\n(tracks event order)" as TI
+    component "Relationship builder\\n(links tasks, agents, outcomes)" as RB
+    component "Background analyser\\n(Graphiti pattern extraction)" as BA
+  }
+}
+
+EC --> STF
+STF --> MEA : on state transition
+MEA --> AM : write agent-private facts
+MEA --> TC : for team + org tiers
+TC --> CR
+CR --> TM : write team facts
+CR --> OM : write org facts\\n(access-controlled)
+
+RE --> CRS
+CRS --> AM : query tier 1
+AM --> CE
+CE --> TM : low confidence? query tier 2
+TM --> CE
+CE --> OM : still low? query tier 3
+OM --> CA
+CA --> RE : assembled context returned
+
+AM --> TI & RB
+TM --> TI & RB
+OM --> TI & RB
+TI --> BA
+RB --> BA
+
+note right of MEA
+  LLM extracts:
+  - Task description
+  - Blockers encountered
+  - Approach taken
+  - Outcome + learnings
+end note
+
+note right of BA
+  Background Graphiti agent.
+  Surfaces patterns for
+  future workflow improvement
+  suggestions to human.
+end note
+@enduml`;
+
+const eventbus=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Event bus (Redis Streams / similar)" {
+
+  package "Producers" {
+    component "Specialist agents" as SA
+    component "Generalist agents" as GA
+    component "Kite Runner" as KR
+    component "Workflow engine" as WFE
+  }
+
+  package "Event types" {
+    component "task.created" as E1
+    component "task.assigned" as E2
+    component "task.state_transition" as E3
+    component "task.blocked" as E4
+    component "task.completed" as E5
+    component "memory.write" as E6
+    component "workflow.escalated" as E7
+    component "agent.tool_call" as E8
+  }
+
+  package "Bus core" {
+    component "Event router\\n(topic-based routing)" as ER
+    component "Event schema validator\\n(typed event contracts)" as ESV
+    component "Dead letter queue\\n(failed events)" as DLQ
+    component "Replay buffer\\n(replayable stream)" as RB
+  }
+
+  package "Consumers" {
+    component "Raw event log writer\\n(append everything)" as REL
+    component "Memory extraction worker\\n(on state_transition only)" as MEW
+    component "Merkle audit writer\\n(tamper-evident chain)" as MAW
+    component "Progress tracker\\n(KR polls via events)" as PT
+    component "Notification engine\\n(on task.completed)" as NE
+  }
+}
+
+SA --> ESV
+GA --> ESV
+KR --> ESV
+WFE --> ESV
+
+ESV --> ER : validated events
+ESV --> DLQ : invalid events
+
+E1 & E2 & E3 & E4 & E5 & E6 & E7 & E8 --> ER
+
+ER --> REL : all events
+ER --> MEW : state_transition only
+ER --> MAW : all events
+ER --> PT : task events
+ER --> NE : task.completed
+
+REL --> RB : persisted + replayable
+
+note right of DLQ
+  Failed or malformed
+  events held for
+  manual inspection.
+end note
+
+note right of RB
+  Full event history
+  replayable for
+  debugging and
+  audit purposes.
+end note
+@enduml`;
+
+const tooling=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Tool layer (OpenFang + ZeroClaw)" {
+
+  package "Tool registry (OpenFang)" {
+    component "Built-in tools\\n(53+ tools out of the box)" as BT
+    component "MCP connector\\n(extend via MCP protocol)" as MCP
+    component "A2A connector\\n(agent-to-agent protocol)" as A2A
+    component "Custom tool loader\\n(org-specific tools)" as CTL
+    component "Tool access controller\\n(per-agent permissions)" as TAC
+  }
+
+  package "Tool categories" {
+    component "Code execution\\n(run, test, lint)" as CE
+    component "File operations\\n(read, write, search)" as FO
+    component "API calls\\n(HTTP, REST, GraphQL)" as API
+    component "Communication\\n(email, Slack, notify)" as COM
+    component "Search\\n(web, internal docs)" as SRC
+    component "Data ops\\n(query DB, transform)" as DO
+  }
+
+  package "ZeroClaw runtime" {
+    component "Agent executor\\n(runs specialist LLM)" as AE
+    component "AIEOS identity loader\\n(loads agent persona)" as AIL
+    component "Tool call interceptor\\n(logs all tool usage)" as TCI
+    component "Sandboxed execution\\n(isolated per agent)" as SE
+  }
+
+  package "Background Hands (OpenFang)" {
+    component "Memory analyser\\n(scheduled pattern extraction)" as MA
+    component "Workflow suggester\\n(surfaces improvement ideas)" as WS
+    component "Health monitor\\n(watches agent + task health)" as HM
+  }
+
+  package "Audit (OpenFang)" {
+    component "Merkle chain\\n(tamper-evident audit log)" as MC
+    component "Tool usage log\\n(every call recorded)" as TUL
+    component "Security layers\\n(16-layer security)" as SL
+  }
+}
+
+BT --> TAC
+MCP --> TAC
+A2A --> TAC
+CTL --> TAC
+
+TAC --> AE : permitted tools only
+
+AE --> AIL : load agent identity
+AIL --> SE : sandboxed context
+SE --> TCI : all tool calls intercepted
+TCI --> CE & FO & API & COM & SRC & DO
+TCI --> TUL : log every call
+TUL --> MC : append to Merkle chain
+
+MA --> WS : patterns found
+HM --> MC : health events logged
+SL --> TAC : enforce access rules
+
+note right of TAC
+  Each specialist agent has
+  a defined toolset. Generalists
+  and KR have different
+  permission profiles.
+end note
+
+note right of MA
+  Scheduled background agent.
+  Reads Graphiti memory,
+  extracts patterns, surfaces
+  workflow update suggestions
+  to human. (Future phase)
+end note
+@enduml`;
+
+render('kr', kr);
+render('generalist', generalist);
+render('specialist', specialist);
+render('wfengine', wfengine);
+render('memory', memory);
+render('eventbus', eventbus);
+render('tooling', tooling);
+</script>

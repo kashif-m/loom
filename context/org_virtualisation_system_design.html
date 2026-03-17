@@ -1,0 +1,99 @@
+
+<div id="diagram"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+    primaryColor: dark ? '#3C3489' : '#EEEDFE',
+    primaryTextColor: dark ? '#CECBF6' : '#3C3489',
+    primaryBorderColor: dark ? '#534AB7' : '#AFA9EC',
+    secondaryColor: dark ? '#085041' : '#E1F5EE',
+    secondaryTextColor: dark ? '#9FE1CB' : '#085041',
+    secondaryBorderColor: dark ? '#0F6E56' : '#5DCAA5',
+    tertiaryColor: dark ? '#444441' : '#F1EFE8',
+    tertiaryTextColor: dark ? '#D3D1C7' : '#444441',
+    tertiaryBorderColor: dark ? '#5F5E5A' : '#B4B2A9',
+    noteBkgColor: dark ? '#444441' : '#F1EFE8',
+    noteTextColor: dark ? '#D3D1C7' : '#2C2C2A',
+  },
+});
+
+const chart = `
+flowchart TD
+    HU(["Human User"])
+
+    subgraph ORG["Organisation layer"]
+        KR["Kite Runner\n(orchestrator)"]
+        OWF["Org-level workflows"]
+        OM[("Org memory")]
+    end
+
+    subgraph TEAM_A["Team A"]
+        GA["Generalist agent\n(team lead)"]
+        TWF_A["Team workflows"]
+        TM_A[("Team memory")]
+        S1["Specialist"]
+        S2["Specialist"]
+        S3["Specialist"]
+    end
+
+    subgraph TEAM_B["Team B"]
+        GB["Generalist agent\n(team lead)"]
+        TWF_B["Team workflows"]
+        TM_B[("Team memory")]
+        S4["Specialist"]
+        S5["Specialist"]
+    end
+
+    subgraph MEM["Memory layer (Graphiti)"]
+        RAW[("Raw event log\n(append-only)")]
+        DERIVED[("Derived memory\n(state transitions)")]
+    end
+
+    subgraph TOOLS["Tool & runtime layer"]
+        ZC["ZeroClaw runtime\n(AIEOS identity)"]
+        OF["OpenFang tools\n(53+ built-in)"]
+        AUDIT["Merkle audit trail"]
+    end
+
+    HU -->|"task / request"| KR
+    KR -->|"matches"| OWF
+    KR -->|"delegates"| GA
+    KR -->|"delegates"| GB
+    KR <-->|"read / write"| OM
+    OWF -.->|"no match → escalate"| HU
+
+    GA -->|"matches"| TWF_A
+    GA -->|"assigns"| S1 & S2 & S3
+    GA <-->|"read / write"| TM_A
+
+    GB -->|"matches"| TWF_B
+    GB -->|"assigns"| S4 & S5
+    GB <-->|"read / write"| TM_B
+
+    GA <-->|"cross-team handoff"| GB
+
+    S1 & S2 & S3 & S4 & S5 -->|"every event"| RAW
+    RAW -->|"on state transition"| DERIVED
+    DERIVED -->|"cascade: agentic → team → org"| MEM
+
+    S1 & S2 & S3 & S4 & S5 -->|"execute via"| ZC
+    ZC --- OF
+    OF --- AUDIT
+
+    KR & GA & GB -->|"query"| DERIVED
+`;
+
+const { svg } = await mermaid.render('diagram-svg', chart);
+document.getElementById('diagram').innerHTML = svg;
+</script>

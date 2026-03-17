@@ -1,16 +1,31 @@
-.PHONY: bootstrap run test lint typecheck
+.PHONY: dev migrate test test-unit test-integration lint fmt typecheck api ui-dev
 
-bootstrap:
-	./scripts/bootstrap_local_stack.sh
+dev:
+	@echo "SQLite database ready at ./loom.db"
 
-run:
-	python3 -m loom.app.main --serve
+migrate:
+	uv run python -m src.core.task_store.migrations
 
 test:
-	python3 -m pytest -q
+	uv run pytest tests/ -v
+
+test-unit:
+	uv run pytest tests/unit/ -v
+
+test-integration:
+	uv run pytest tests/integration/ -v
 
 lint:
-	python3 -m ruff check .
+	ruff check src/ && ruff format --check src/
+
+fmt:
+	ruff format src/ && ruff check --fix src/
 
 typecheck:
-	python3 -m mypy loom
+	pyright src/
+
+api:
+	uv run uvicorn src.api.gateway:app --reload --port 8000
+
+ui-dev:
+	cd ui && pnpm dev

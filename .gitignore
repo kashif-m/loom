@@ -1,17 +1,118 @@
+# Environment
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# SQLite
+loom.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Nix
+result
+result-*
+
+# Node
+ui/node_modules/
+ui/.next/
+ui/out/
+ui/build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+/tmp/
+
+# Data directories
+.data/
+data/
+.postgres/
+
+# uv package manager
+.uv/
+uv.lock
+
+# Legacy
 /venv
 /.venv
 /.tools
-.env*
 .*cache
 *egg-info
-*.db
-*__pycache__
 *alembic
 /.agents
 /.claude
+/.claude-*
+/.claude-*
 /.codex
 /.cursor
 /.kiro
 /.gemini
 /.opencode
 /.pi
+loom_kernel.egg-info/
+loom_mvp.egg-info/
+
+# Archives
+loom_backup/
+loom_old/
+loom_legacy/
+*.tar.gz
+*.zip
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# Pyright
+pyrightconfig.json

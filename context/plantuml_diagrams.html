@@ -1,0 +1,198 @@
+
+<style>
+.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:6px 14px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.panel{display:none}.panel.active{display:block}
+.diagram-wrap{text-align:center;padding:8px 0}
+.diagram-wrap img{max-width:100%;height:auto}
+.error{color:var(--color-text-danger);font-size:13px;padding:12px}
+.loading{color:var(--color-text-secondary);font-size:13px;padding:12px}
+</style>
+
+<div class="tabs">
+  <button class="tab active" onclick="show('activity')">Activity diagram</button>
+  <button class="tab" onclick="show('sequence')">Sequence diagram</button>
+  <button class="tab" onclick="show('state')">State diagram</button>
+</div>
+
+<div id="activity" class="panel active">
+  <div class="diagram-wrap"><div class="loading" id="activity-status">Rendering...</div><img id="activity-img" style="display:none" /></div>
+</div>
+<div id="sequence" class="panel">
+  <div class="diagram-wrap"><div class="loading" id="sequence-status">Rendering...</div><img id="sequence-img" style="display:none" /></div>
+</div>
+<div id="state" class="panel">
+  <div class="diagram-wrap"><div class="loading" id="state-status">Rendering...</div><img id="state-img" style="display:none" /></div>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.tab').forEach((t,i)=>{t.classList.toggle('active', ['activity','sequence','state'][i]===id)});
+  document.querySelectorAll('.panel').forEach(p=>{p.classList.toggle('active', p.id===id)});
+}
+
+function toHex(str) {
+  return Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function renderDiagram(id, puml) {
+  const hex = toHex(puml);
+  const url = `https://www.plantuml.com/plantuml/svg/~h${hex}`;
+  const img = document.getElementById(id+'-img');
+  const status = document.getElementById(id+'-status');
+  img.onload = () => { status.style.display='none'; img.style.display='block'; };
+  img.onerror = () => { status.className='error'; status.textContent='Could not load diagram — check network access to plantuml.com'; };
+  img.src = url;
+}
+
+const activity = `
+@startuml
+skinparam backgroundColor transparent
+skinparam activityBackgroundColor #EEEDFE
+skinparam activityBorderColor #534AB7
+skinparam activityFontSize 13
+skinparam arrowColor #534AB7
+skinparam activityDiamondBackgroundColor #E1F5EE
+skinparam activityDiamondBorderColor #0F6E56
+
+start
+:Human reports bug\\n"Payment button not rendering\\nin Hyperswitch payment links";
+
+:KR receives task;
+:KR queries org memory for context;
+:KR matches task to org-level workflow;
+
+if (Workflow match found?) then (yes)
+  :KR creates tracking ticket;
+  :KR delegates to Engineering Team generalist;
+
+  :Engineering generalist queries team memory;
+  :Match task to team-level workflow;
+
+  if (Team workflow match found?) then (yes)
+    :Assign to Frontend specialist;
+
+    :Specialist queries agentic memory\\nfor similar past bugs;
+    fork
+      :Inspect payment button\\nrender logic;
+    fork again
+      :Check Hyperswitch\\npayment links config;
+    end fork
+
+    :Identify root cause;
+    :Implement fix + write tests;
+    :Submit PR;
+    :Write outcome to agentic memory;
+
+    :Generalist reviews and transitions state;
+    :Write task summary to team memory;
+
+    :Notify KR — bug resolved;
+    :KR writes outcome to org memory;
+    :Notify human with resolution;
+  else (no)
+    :Escalate to human\\nfor more details;
+    stop
+  endif
+else (no)
+  :Escalate to human\\nfor more details;
+  stop
+endif
+
+stop
+@enduml`;
+
+const sequence = `
+@startuml
+skinparam backgroundColor transparent
+skinparam sequenceParticipantBackgroundColor #EEEDFE
+skinparam sequenceParticipantBorderColor #534AB7
+skinparam sequenceArrowColor #534AB7
+skinparam sequenceLifeLineBorderColor #AFA9EC
+skinparam noteBorderColor #0F6E56
+skinparam noteBackgroundColor #E1F5EE
+skinparam fontsize 12
+
+actor Human
+participant "Kite Runner" as KR
+participant "Org Memory" as OM
+participant "Engineering\\nGeneralist" as EG
+participant "Team Memory" as TM
+participant "Frontend\\nSpecialist" as FS
+participant "Agentic Memory" as AM
+
+Human -> KR : "Fix payment button rendering\\nin Hyperswitch payment links"
+
+KR -> OM : Query — past context on\\nHyperswitch payment links?
+OM --> KR : No prior context
+
+note over KR : Matches org-level\\nbug fix workflow
+
+KR -> OM : Write — task created,\\ndelegated to engineering
+KR -> EG : Delegate task
+
+EG -> TM : Query — any prior\\npayment link issues?
+TM --> EG : Returns 2 related past tasks
+note over EG : Matches team-level\\nworkflow: frontend bug fix
+
+EG -> FS : Assign — investigate\\npayment button render bug
+
+FS -> AM : Query — similar\\nbug patterns?
+AM --> FS : Past debugging\\ncontext retrieved
+
+FS -> FS : Reproduce bug in dev
+FS -> FS : Root cause identified:\\nCSS z-index conflict\\nin button component
+FS -> FS : Implement fix + tests
+FS -> FS : Submit PR
+
+FS -> AM : Write — root cause,\\napproach, outcome
+FS -> EG : Task complete — PR submitted
+
+EG -> TM : Write — task summary,\\nspecialist assigned, outcome
+EG -> KR : Notify — bug resolved
+
+KR -> OM : Write — task outcome,\\nteam, blockers, impact
+KR -> Human : Payment button fix deployed\\n— issue resolved
+@enduml`;
+
+const state = `
+@startuml
+skinparam backgroundColor transparent
+skinparam stateBackgroundColor #EEEDFE
+skinparam stateBorderColor #534AB7
+skinparam stateArrowColor #534AB7
+skinparam stateFontSize 12
+
+[*] --> TaskReceived : Human submits bug
+
+state "Org layer" as ORG {
+  TaskReceived --> WorkflowMatching : KR picks up task
+  WorkflowMatching --> Escalated : No match
+  WorkflowMatching --> TeamDelegated : Workflow matched
+  Escalated --> TaskReceived : Human clarifies
+  Escalated --> [*] : Abandoned
+}
+
+state "Team layer" as TEAM {
+  TeamDelegated --> ContextGathering : Generalist assigned
+  ContextGathering --> SpecialistAssigned : Memory queried
+  SpecialistAssigned --> InProgress : Work begins
+  InProgress --> Blocked : Blocker hit
+  Blocked --> InProgress : Resolved
+  Blocked --> Escalated : Unresolvable
+  InProgress --> InReview : PR submitted
+  InReview --> InProgress : Changes requested
+  InReview --> Done : Approved and merged
+}
+
+state "Memory layer" as MEM {
+  Done --> MemoryUpdated : All tiers written\\n(agentic → team → org)
+  MemoryUpdated --> [*] : Human notified\\nticket closed
+}
+@enduml`;
+
+renderDiagram('activity', activity);
+renderDiagram('sequence', sequence);
+renderDiagram('state', state);
+</script>

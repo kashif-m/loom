@@ -1,0 +1,295 @@
+
+<style>
+.tabs{display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:5px 11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:11px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.panel{display:none}.panel.active{display:block}
+.diagram-wrap{text-align:center;padding:8px 0}
+.diagram-wrap img{max-width:100%;height:auto}
+.error{color:var(--color-text-danger);font-size:13px;padding:12px}
+.loading{color:var(--color-text-secondary);font-size:13px;padding:12px}
+</style>
+
+<div class="tabs">
+  <button class="tab active" onclick="show('stack')">Updated stack</button>
+  <button class="tab" onclick="show('abstraction')">LLM abstraction layer</button>
+  <button class="tab" onclick="show('config')">Model config pattern</button>
+  <button class="tab" onclick="show('repo')">Repo changes</button>
+</div>
+
+<div id="stack"      class="panel active"><div class="diagram-wrap"><div class="loading" id="stack-status">Rendering...</div><img id="stack-img" style="display:none"/></div></div>
+<div id="abstraction" class="panel"><div class="diagram-wrap"><div class="loading" id="abstraction-status">Rendering...</div><img id="abstraction-img" style="display:none"/></div></div>
+<div id="config"     class="panel"><div class="diagram-wrap"><div class="loading" id="config-status">Rendering...</div><img id="config-img" style="display:none"/></div></div>
+<div id="repo"       class="panel"><div class="diagram-wrap"><div class="loading" id="repo-status">Rendering...</div><img id="repo-img" style="display:none"/></div></div>
+
+<script>
+const TABS=['stack','abstraction','config','repo'];
+function show(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===id));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id));
+}
+function toHex(str){return Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+function render(id,puml){
+  const url=`https://www.plantuml.com/plantuml/svg/~h${toHex(puml)}`;
+  const img=document.getElementById(id+'-img');
+  const status=document.getElementById(id+'-status');
+  img.onload=()=>{status.style.display='none';img.style.display='block';};
+  img.onerror=()=>{status.className='error';status.textContent='Could not load — needs plantuml.com access';};
+  img.src=url;
+}
+
+const stack=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "LLM layer (updated — provider agnostic)" {
+
+  component "LiteLLM\\n→ single completion() interface\\n→ routes to any provider\\n→ automatic retries + fallbacks\\n→ cost tracking built in\\n→ async support\\n→ streaming support" as LL
+
+  package "Supported providers (zero code change)" {
+    component "Anthropic\\nclaude-sonnet-4-5\\nclaude-haiku-4-5" as P1
+    component "OpenAI\\ngpt-4o\\ngpt-4o-mini" as P2
+    component "Google\\ngemini-1.5-pro\\ngemini-1.5-flash" as P3
+    component "Mistral\\nmistral-large\\nmistral-small" as P4
+    component "Ollama\\n(local models)\\nllama3, mistral" as P5
+    component "AWS Bedrock\\nAzure OpenAI\\nAny OpenAI-compat API" as P6
+  }
+
+  package "LLM client wrapper (your code)" {
+    component "src/core/llm/\\n  client.py     — thin async wrapper\\n  models.py     — model role registry\\n  config.py     — per-role model config" as LC
+  }
+}
+
+package "Model role assignments (config-driven)" {
+  component "FAST_MODEL\\n(workflow matching,\\nmemory extraction,\\nintent tagging)\\nDefault: claude-haiku-4-5\\nSwappable: gpt-4o-mini,\\ngemini-flash, mistral-small" as MR1
+
+  component "REASONING_MODEL\\n(specialist execution,\\ngeneralist decisions,\\nself-reflection)\\nDefault: claude-sonnet-4-5\\nSwappable: gpt-4o,\\ngemini-pro, mistral-large" as MR2
+
+  component "LOCAL_MODEL (optional)\\n(dev/test, offline use,\\ncost-sensitive tasks)\\nDefault: none\\nSwappable: ollama/llama3" as MR3
+}
+
+LL --> P1
+LL --> P2
+LL --> P3
+LL --> P4
+LL --> P5
+LL --> P6
+
+LC --> LL : calls via litellm.acompletion()
+MR1 & MR2 & MR3 --> LC : resolved at call time
+
+note right of LL
+  LiteLLM is the ONLY
+  place provider names
+  appear in the codebase.
+  Agents call client.py.
+  client.py calls LiteLLM.
+  Nothing else knows
+  which provider is active.
+end note
+
+note right of MR3
+  Local model useful for:
+  - unit testing agents
+    without API costs
+  - offline development
+  - cheap batch extraction
+  Add ollama to
+  docker-compose and
+  it just works.
+end note
+@enduml`;
+
+const abstraction=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "LLM abstraction layer — src/core/llm/" {
+
+  package "client.py — the only file agents ever import" {
+    component "async def complete(\\n  role: ModelRole,\\n  messages: list[Message],\\n  tools: list[Tool] | None,\\n  temperature: float = 0.7\\n) -> LLMResponse\\n\\nasync def complete_structured(\\n  role: ModelRole,\\n  messages: list[Message],\\n  response_model: type[BaseModel]\\n) -> BaseModel" as CLI
+  }
+
+  package "models.py — model role enum" {
+    component "class ModelRole(str, Enum):\\n  FAST       = 'fast'\\n  REASONING  = 'reasoning'\\n  LOCAL      = 'local'" as MOD
+  }
+
+  package "config.py — resolved from env vars" {
+    component "class LLMConfig(BaseSettings):\\n  fast_model: str\\n  reasoning_model: str\\n  local_model: str | None\\n  fallback_model: str | None\\n  max_retries: int = 3\\n  timeout_seconds: int = 30" as CFG
+  }
+
+  package "schemas.py — provider-agnostic types" {
+    component "class Message(BaseModel):\\n  role: Literal['system','user','assistant']\\n  content: str\\n\\nclass Tool(BaseModel):\\n  name: str\\n  description: str\\n  parameters: dict\\n\\nclass LLMResponse(BaseModel):\\n  content: str\\n  tool_calls: list | None\\n  model_used: str\\n  tokens_used: int" as SCH
+  }
+
+  package "Internal — never called directly by agents" {
+    component "async def _call_litellm(\\n  model: str,\\n  messages: list,\\n  **kwargs\\n) -> ModelResponse:\\n  return await litellm.acompletion(\\n    model=model,\\n    messages=messages,\\n    **kwargs\\n  )" as INT
+  }
+}
+
+package "How agents use it" {
+  component "from core.llm.client import complete\\nfrom core.llm.models import ModelRole\\n\\n# Specialist execution\\nresponse = await complete(\\n  role=ModelRole.REASONING,\\n  messages=[...]\\n)\\n\\n# Workflow matching (cheap)\\nresponse = await complete(\\n  role=ModelRole.FAST,\\n  messages=[...]\\n)" as USG
+}
+
+MOD --> CLI
+CFG --> CLI
+SCH --> CLI
+CLI --> INT
+INT --> USG
+
+note right of CLI
+  Agents import ONLY this.
+  ModelRole enum tells the
+  client which model to use.
+  Client resolves model
+  string from config.
+  LiteLLM handles the rest.
+end note
+
+note right of CFG
+  Model strings come from
+  env vars. Swap provider
+  by changing .env only.
+  No code changes needed
+  to switch from Anthropic
+  to OpenAI or vice versa.
+end note
+@enduml`;
+
+const config=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Model config pattern — .env + agent config" {
+
+  package ".env (operator sets this — never committed)" {
+    component "# Primary provider: Anthropic\\nFAST_MODEL=claude-haiku-4-5-20251001\\nREASONING_MODEL=claude-sonnet-4-5\\n\\n# Swap to OpenAI — just change these two lines\\n# FAST_MODEL=gpt-4o-mini\\n# REASONING_MODEL=gpt-4o\\n\\n# Optional local fallback\\n# LOCAL_MODEL=ollama/llama3.2\\n\\n# Provider API keys (only set the ones you use)\\nANTHROPIC_API_KEY=sk-ant-...\\n# OPENAI_API_KEY=sk-...\\n# GEMINI_API_KEY=...\\n\\n# Fallback model (if primary fails)\\nFALLBACK_MODEL=claude-haiku-4-5-20251001" as ENV
+  }
+
+  package "Agent config JSON (per agent — in /agents_config/)" {
+    component "{\\n  'agent_id': 'frontend-specialist-01',\\n  'name': 'Frontend Specialist',\\n  'authority_level': 'specialist',\\n  'team_id': 'engineering',\\n  'model_role': 'reasoning',\\n  'permitted_tools': [\\n    'code_execution',\\n    'file_read',\\n    'web_search'\\n  ],\\n  'memory_scope': 'agentic_only'\\n}" as AJ
+  }
+
+  package "Fallback chain (LiteLLM handles this)" {
+    component "Primary model\\n(from REASONING_MODEL or FAST_MODEL)" as FC1
+    component "Fallback model\\n(from FALLBACK_MODEL env var)" as FC2
+    component "Error raised to escalation handler\\n(if all fallbacks exhausted)" as FC3
+  }
+
+  package "Per-agent model override (optional)" {
+    component "Some agents can override model_role\\nin their config JSON.\\nExample: a cheap summariser agent\\ncan hardcode 'fast' regardless\\nof what the org default is.\\nUseful for cost optimisation later." as OVR
+  }
+}
+
+FC1 ..> FC2 : on rate limit / error
+FC2 ..> FC3 : on repeated failure
+
+note right of ENV
+  LiteLLM model strings
+  follow the pattern:
+  provider/model-name
+  e.g. anthropic/claude-sonnet-4-5
+       openai/gpt-4o
+       ollama/llama3.2
+  Anthropic models can also
+  be referenced by name only.
+end note
+
+note right of AJ
+  model_role is the only
+  LLM reference in agent
+  config. The actual model
+  string is resolved at
+  runtime from env vars.
+  Agents never know which
+  provider they are using.
+end note
+@enduml`;
+
+const repo=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Repo changes from original plan" {
+
+  package "ADDED — src/core/llm/" {
+    component "client.py         — async wrapper\\nmodels.py         — ModelRole enum\\nconfig.py         — LLMConfig settings\\nschemas.py        — provider-agnostic types\\n__init__.py       — exports complete()" as ADD
+  }
+
+  package "REMOVED" {
+    component "Any direct import of anthropic SDK\\nAny direct import of openai SDK\\nAny model string hardcoded in source\\nAny provider-specific message formatting" as REM
+  }
+
+  package "CHANGED — src/agents/base/identity.py" {
+    component "Add model_role field to AgentConfig\\nResolve ModelRole at agent init\\nPass role to complete() calls\\nNo provider name anywhere in agent code" as CHG1
+  }
+
+  package "CHANGED — pyproject.toml" {
+    component "REMOVE: anthropic>=0.40.0\\nADD:    litellm>=1.40.0\\n\\n# Optional — add only if using that provider\\n# anthropic>=0.40.0  (litellm pulls it as dep anyway)\\n# openai>=1.40.0\\n# google-generativeai" as CHG2
+  }
+
+  package "CHANGED — .env.example" {
+    component "Add FAST_MODEL=claude-haiku-4-5-20251001\\nAdd REASONING_MODEL=claude-sonnet-4-5\\nAdd FALLBACK_MODEL=claude-haiku-4-5-20251001\\nAdd LOCAL_MODEL= (empty, optional)\\nKeep ANTHROPIC_API_KEY as example\\nAdd commented-out alternatives" as CHG3
+  }
+
+  package "UNCHANGED — everything else" {
+    component "Task store, event bus, workflow engine,\\nGraphiti, OpenFang, ZeroClaw, LangGraph,\\nall agent logic, all tests.\\nThe abstraction layer is a clean seam —\\nnothing else needs to know about it." as UNC
+  }
+}
+
+note right of ADD
+  This is the ONLY new
+  directory. Four files.
+  ~150 lines total.
+  Everything else in the
+  repo stays exactly as
+  planned. Clean seam.
+end note
+
+note right of UNC
+  This is the point of
+  the abstraction layer.
+  One small addition,
+  zero cascading changes,
+  full provider flexibility
+  forever.
+end note
+@enduml`;
+
+render('stack', stack);
+render('abstraction', abstraction);
+render('config', config);
+render('repo', repo);
+</script>

@@ -1,0 +1,412 @@
+
+<style>
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:5px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.panel{display:none}.panel.active{display:block}
+.diagram-wrap{text-align:center;padding:8px 0}
+.diagram-wrap img{max-width:100%;height:auto}
+.error{color:var(--color-text-danger);font-size:13px;padding:12px}
+.loading{color:var(--color-text-secondary);font-size:13px;padding:12px}
+</style>
+
+<div class="tabs">
+  <button class="tab active" onclick="show('arch')">Lean v1 architecture</button>
+  <button class="tab" onclick="show('taskstore')">Task store schema</button>
+  <button class="tab" onclick="show('wfformat')">Workflow file format</button>
+  <button class="tab" onclick="show('kernel')">Org kernel (invariants)</button>
+  <button class="tab" onclick="show('v2')">V2 upgrade map</button>
+</div>
+
+<div id="arch"      class="panel active"><div class="diagram-wrap"><div class="loading" id="arch-status">Rendering...</div><img id="arch-img" style="display:none"/></div></div>
+<div id="taskstore" class="panel"><div class="diagram-wrap"><div class="loading" id="taskstore-status">Rendering...</div><img id="taskstore-img" style="display:none"/></div></div>
+<div id="wfformat"  class="panel"><div class="diagram-wrap"><div class="loading" id="wfformat-status">Rendering...</div><img id="wfformat-img" style="display:none"/></div></div>
+<div id="kernel"    class="panel"><div class="diagram-wrap"><div class="loading" id="kernel-status">Rendering...</div><img id="kernel-img" style="display:none"/></div></div>
+<div id="v2"        class="panel"><div class="diagram-wrap"><div class="loading" id="v2-status">Rendering...</div><img id="v2-img" style="display:none"/></div></div>
+
+<script>
+const TABS=['arch','taskstore','wfformat','kernel','v2'];
+function show(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===id));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id));
+}
+function toHex(str){return Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+function render(id,puml){
+  const url=`https://www.plantuml.com/plantuml/svg/~h${toHex(puml)}`;
+  const img=document.getElementById(id+'-img');
+  const status=document.getElementById(id+'-status');
+  img.onload=()=>{status.style.display='none';img.style.display='block';};
+  img.onerror=()=>{status.className='error';status.textContent='Could not load — needs plantuml.com access';};
+  img.src=url;
+}
+
+const arch=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #FAEEDA
+skinparam noteBorderColor #854F0B
+skinparam linetype ortho
+
+actor Human as H
+
+rectangle "API gateway\\n(auth + routing)" as GW
+
+package "Orchestration layer" {
+
+  component "Kite Runner\\n─────────────\\n1. receive task\\n2. match org workflow\\n3. create task record\\n4. delegate to team\\n5. poll every 5 min\\n6. notify human on close" as KR
+
+  component "Generalist agent\\n─────────────\\n1. receive task\\n2. match team workflow\\n3. assign to specialist\\n4. join gate (ALL_SUCCESS)\\n5. review output quality\\n6. report up to KR" as GA
+
+  component "Specialist agent\\n─────────────\\n(ZeroClaw + AIEOS)\\n1. load identity config\\n2. query own memory\\n3. execute with tools\\n4. self-reflect on output\\n5. return result" as SA
+}
+
+package "Control plane" {
+  database "Task store\\n(Postgres)\\n─────────────\\ntask_id, owner,\\ncurrent_state, version,\\nretry_count, SLA,\\nartifacts, history" as TS
+
+  component "Workflow engine\\n─────────────\\nmarkdown parser\\n+ state machine runtime\\n(LangGraph)\\n+ hot reload\\n+ deterministic match first\\n+ LLM fallback\\n+ escalation handler" as WE
+}
+
+package "Event infrastructure" {
+  component "Event bus\\n(Redis Streams)" as EB
+  database "Raw event log\\n(append-only, Postgres)" as REL
+}
+
+package "Knowledge plane" {
+  component "Memory extraction worker\\n(triggered on state transitions only)" as MEW
+  database "Graphiti\\n─────────────\\nagentic memory (private)\\nteam memory (shared)\\norg memory (restricted)" as GM
+}
+
+package "Tool layer" {
+  component "OpenFang\\ntool registry +\\nMCP connector" as OF
+}
+
+package "Workflow definitions" {
+  component "Markdown files\\n(git repo, hot-reloaded)\\n─────────────\\norg-level\\nteam-level\\nagentic-level" as MF
+}
+
+H --> GW
+GW --> KR
+
+KR --> WE : match workflow
+KR --> TS : create_task()
+KR --> GA : delegate(task_id)
+KR ..> H : no match → escalate
+
+GA --> WE : match team workflow
+GA --> SA : assign subtask
+GA --> TS : update_state()
+
+SA --> OF : tool calls
+SA --> GM : read agentic memory
+SA --> TS : attach_artifact()
+
+KR --> EB : emit events
+GA --> EB : emit events
+SA --> EB : emit events
+WE --> EB : emit transition events
+
+EB --> REL : all events (append)
+EB --> MEW : state_transition events only
+MEW --> GM : write structured facts
+
+WE --> MF : load + hot reload
+TS --> KR : progress polling
+
+note right of KR
+  FOUNDATIONAL.
+  Single orchestrator.
+  Owns org-level routing.
+  Never executes work itself.
+end note
+
+note right of TS
+  FOUNDATIONAL.
+  Single source of truth
+  for all task state.
+  Optimistic locking via
+  version field — prevents
+  duplicate transitions.
+end note
+
+note right of EB
+  FOUNDATIONAL.
+  Decouples everything.
+  All components talk via
+  events, not direct calls.
+  Enables replay + audit
+  from day one.
+end note
+
+note right of MEW
+  SIMPLE IN V1.
+  Write on state transitions
+  only. No fact/interpretation
+  split yet. Just structured
+  extraction of what happened.
+end note
+
+note right of MF
+  FOUNDATIONAL.
+  Human-owned. Git-versioned.
+  Agents suggest, never edit.
+  Hot-reload = zero redeploy
+  to update workflows.
+end note
+@enduml`;
+
+const taskstore=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Task store — V1 schema (Postgres)" {
+
+  package "Core fields — ship these on day one" {
+    component "task_id\\nUUID, primary key, immutable" as F1
+    component "workflow_id + workflow_version\\nwhich workflow + which version created this" as F2
+    component "owner_agent_id\\ncurrent agent responsible" as F3
+    component "team_id\\ncurrent owning team" as F4
+    component "current_state\\nstring — state machine position" as F5
+    component "version\\nint — increments on every transition\\noptimistic lock key" as F6
+    component "retry_count\\nint — attempts at current state" as F7
+    component "sla_deadline\\ntimestamp — breach triggers escalation" as F8
+    component "escalation_count\\nint — times escalated" as F9
+    component "status\\nenum: open | blocked | escalated | closed" as F10
+    component "created_at / updated_at / closed_at\\ntimestamps" as F11
+  }
+
+  package "Relational tables — keep separate" {
+    component "task_history\\n(task_id, from_state, to_state,\\nagent_id, event_id, timestamp)\\nappend-only — one row per transition" as TH
+    component "task_artifacts\\n(task_id, type, reference_url,\\nagent_id, created_at)\\nreferences only — no raw data" as TA
+    component "task_blockers\\n(task_id, description, raised_by,\\nraised_at, resolved_at)\\nnull resolved_at = active blocker" as TB
+  }
+
+  package "V1 operations — implement these only" {
+    component "create_task(workflow_id, owner, sla)" as OP1
+    component "transition_state(task_id, to_state, version)\\n→ optimistic lock — fail if version mismatch" as OP2
+    component "record_blocker(task_id, description)" as OP3
+    component "resolve_blocker(task_id, blocker_id)" as OP4
+    component "attach_artifact(task_id, type, url)" as OP5
+    component "escalate(task_id, reason)" as OP6
+    component "close_task(task_id, outcome)" as OP7
+  }
+}
+
+note right of F6
+  Version field is the single
+  most important field in
+  the whole schema.
+  All duplicate-transition
+  protection lives here.
+  Always increment on write,
+  always check on transition.
+end note
+
+note right of TH
+  Never update — only append.
+  Full audit trail of every
+  state the task has been in.
+  Free debugging tool.
+end note
+
+note right of TA
+  Store references (URLs, IDs).
+  Never store raw artifact data
+  in the task store.
+  Keeps the table lean forever.
+end note
+@enduml`;
+
+const wfformat=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Workflow file format — V1 markdown schema" {
+
+  package "Required fields (parser rejects if missing)" {
+    component "id:\\nslug — unique, stable, machine-readable\\nexample: engineering/fix-bug" as R1
+    component "version:\\nv1, v2 — simple, no semver yet\\nexample: v1" as R2
+    component "level:\\norg | team | agentic\\ndetermines which engine loads it" as R3
+    component "trigger:\\nnatural language description\\nused by deterministic tagger + LLM fallback\\nexample: bug reported on production system" as R4
+    component "tags:\\nlist of keywords for deterministic matching\\nexample: [bug, fix, production, engineering]" as R5
+    component "states:\\nordered list of state names\\nexample: [received, investigating, fixing, review, done]" as R6
+    component "success_condition:\\nnatural language — what does done look like?\\nexample: fix verified in production" as R7
+    component "escalate_if:\\nconditions that trigger human escalation\\nexample: no progress after 2 retries" as R8
+  }
+
+  package "Optional fields (skip in V1, add as needed)" {
+    component "owner_role:\\nwhich agent type handles this\\ndefault: inferred from level" as O1
+    component "sla_hours:\\ndeadline from task creation\\ndefault: no SLA enforcement in V1" as O2
+    component "requires_approval:\\nstates needing human sign-off\\ndefault: none" as O3
+    component "parallel_states:\\nstates that can run concurrently\\ndefault: sequential only in V1" as O4
+    component "compensation_workflow:\\nid of workflow to run on failure\\ndefault: none in V1" as O5
+  }
+
+  package "Example file structure" {
+    component "# id: engineering/fix-bug\\n# version: v1\\n# level: team\\n# trigger: bug reported on production\\n# tags: [bug, fix, production]\\n# states:\\n#   - received\\n#   - investigating\\n#   - fixing\\n#   - in_review\\n#   - done\\n# success_condition: >\\n#   Fix merged and verified in production\\n# escalate_if: >\\n#   No state change after 2 retries OR\\n#   blocker unresolved after 4 hours" as EX
+  }
+}
+
+note right of R5
+  Tags enable deterministic
+  matching in Stage 1.
+  The more specific the tags,
+  the less you rely on LLM
+  fallback. Good tags =
+  stable routing.
+end note
+
+note right of R6
+  States are the state machine.
+  Workflow engine builds the
+  state machine from this list.
+  Order matters — transitions
+  are linear in V1. Branching
+  is a V2 feature.
+end note
+
+note right of O4
+  Parallel states deferred to V2.
+  V1 is sequential only.
+  Simplifies the join gate
+  and branch tracking entirely.
+  Add when you have a real
+  workflow that needs it.
+end note
+@enduml`;
+
+const kernel=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam noteBackgroundColor #FAECE7
+skinparam noteBorderColor #993C1D
+skinparam arrowColor #534AB7
+
+package "Org kernel — 10 invariants for V1" {
+
+  package "State invariants" {
+    component "INV-01\\nTask state lives only in Task Store.\\nAgents never hold authoritative state locally." as I1
+    component "INV-02\\nOnly workflow runtime may transition task state.\\nNo agent writes state directly." as I2
+    component "INV-03\\nAll state transitions emit an append-only event.\\nNo silent transitions ever." as I3
+    component "INV-04\\nMemory never mutates control plane state.\\nKnowledge plane is read-only from control." as I4
+  }
+
+  package "Agent invariants" {
+    component "INV-05\\nNo agent reads another agent's private memory.\\nEver. No exceptions." as I5
+    component "INV-06\\nSpecialists cannot initiate cross-team handoffs.\\nOnly generalists or KR." as I6
+  }
+
+  package "Workflow invariants" {
+    component "INV-07\\nWorkflow definitions are human-owned.\\nAgents may suggest changes, never apply them." as I7
+    component "INV-08\\nEvery in-flight task is pinned to the workflow\\nversion that created it. Never migrated mid-task." as I8
+  }
+
+  package "Event invariants" {
+    component "INV-09\\nAll event consumers are idempotent.\\nDuplicate events must produce no new side effects." as I9
+    component "INV-10\\nAll escalations are explicit events in the event bus.\\nNo implicit failure swallowing anywhere." as I10
+  }
+}
+
+note bottom
+  These 10 invariants cost nothing to implement — they are rules, not code.
+  Write them into your team README, your PR checklist, and your code review process.
+  Any implementation decision that violates one of these is wrong by definition.
+  The 5 invariants dropped from the full spec (evaluation, compensation, versioning detail,
+  access control matrix, branch semantics) are all V2 concerns.
+end note
+@enduml`;
+
+const v2=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "V1 → V2 upgrade map" {
+
+  package "V1 ships as-is" {
+    component "Sequential workflows only\\n(no parallel branches)" as V1A
+    component "FIFO queue per team\\n(no priority levels)" as V1B
+    component "Simple agent config JSON\\n(no full topology model)" as V1C
+    component "v1/v2 workflow versioning\\n(no semver)" as V1D
+    component "3 evaluation signals on close\\n(completed, rework_count, false_escalation)" as V1E
+    component "Memory writes: facts only\\n(no interpretation layer)" as V1F
+    component "ALL_SUCCESS join policy only\\n(hardcoded)" as V1G
+    component "Manual SLA monitoring\\n(KR polls, no auto-breach)" as V1H
+  }
+
+  package "Add in V2 — when you hit the problem" {
+    component "Parallel branches + join policies\\nWHEN: a real workflow needs concurrent subtasks" as V2A
+    component "P0-P3 priority + preemption\\nWHEN: multiple teams, real task contention observed" as V2B
+    component "Full agent topology model\\nWHEN: org has 3+ teams and delegation gets ambiguous" as V2C
+    component "Semver workflow versioning\\nWHEN: workflow changes cause in-flight task conflicts" as V2D
+    component "Full 9-metric evaluation layer\\nWHEN: 3-signal baseline shows systematic problems" as V2E
+    component "Fact vs interpretation split in memory\\nWHEN: Graphiti retrieval starts returning noisy results" as V2F
+    component "Compensation workflows\\nWHEN: parallel branches have real committed side effects" as V2G
+    component "SLA breach auto-escalation\\nWHEN: task volume makes manual polling unreliable" as V2H
+    component "Access control matrix (explicit)\\nWHEN: multi-tenant or regulated environment" as V2I
+    component "Background Hands pattern extraction\\nWHEN: enough memory data to surface real patterns" as V2J
+  }
+}
+
+V1A ..> V2A : parallel needs emerge
+V1B ..> V2B : contention observed
+V1C ..> V2C : delegation ambiguity
+V1D ..> V2D : mid-task version conflicts
+V1E ..> V2E : need deeper signals
+V1F ..> V2F : memory gets noisy
+V1G ..> V2G : side effects need compensation
+V1H ..> V2H : volume grows
+V1A ..> V2I : regulated use case
+V1F ..> V2J : data volume sufficient
+
+note right of V2A
+  Each upgrade is triggered
+  by a real observed problem,
+  not by anticipation.
+  Build V1. Run it.
+  Let the pain tell you
+  which V2 to build next.
+end note
+@enduml`;
+
+render('arch', arch);
+render('taskstore', taskstore);
+render('wfformat', wfformat);
+render('kernel', kernel);
+render('v2', v2);
+</script>

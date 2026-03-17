@@ -1,0 +1,361 @@
+
+<style>
+.tabs{display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:5px 11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:11px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.panel{display:none}.panel.active{display:block}
+.diagram-wrap{text-align:center;padding:8px 0}
+.diagram-wrap img{max-width:100%;height:auto}
+.error{color:var(--color-text-danger);font-size:13px;padding:12px}
+.loading{color:var(--color-text-secondary);font-size:13px;padding:12px}
+</style>
+
+<div class="tabs">
+  <button class="tab active" onclick="show('phases')">Build phases</button>
+  <button class="tab" onclick="show('stack')">Tech stack</button>
+  <button class="tab" onclick="show('repo')">Repo structure</button>
+  <button class="tab" onclick="show('effort')">Effort estimates</button>
+</div>
+
+<div id="phases" class="panel active"><div class="diagram-wrap"><div class="loading" id="phases-status">Rendering...</div><img id="phases-img" style="display:none"/></div></div>
+<div id="stack"  class="panel"><div class="diagram-wrap"><div class="loading" id="stack-status">Rendering...</div><img id="stack-img" style="display:none"/></div></div>
+<div id="repo"   class="panel"><div class="diagram-wrap"><div class="loading" id="repo-status">Rendering...</div><img id="repo-img" style="display:none"/></div></div>
+<div id="effort" class="panel"><div class="diagram-wrap"><div class="loading" id="effort-status">Rendering...</div><img id="effort-img" style="display:none"/></div></div>
+
+<script>
+const TABS=['phases','stack','repo','effort'];
+function show(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===id));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id));
+}
+function toHex(str){return Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+function render(id,puml){
+  const url=`https://www.plantuml.com/plantuml/svg/~h${toHex(puml)}`;
+  const img=document.getElementById(id+'-img');
+  const status=document.getElementById(id+'-status');
+  img.onload=()=>{status.style.display='none';img.style.display='block';};
+  img.onerror=()=>{status.className='error';status.textContent='Could not load — needs plantuml.com access';};
+  img.src=url;
+}
+
+const phases=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #FAEEDA
+skinparam noteBorderColor #854F0B
+
+package "Phase 0 — scaffolding (days 1-3)" {
+  component "Mono-repo setup\\n+ dependency management\\n+ linting + formatting\\n+ env config pattern\\n+ docker-compose skeleton" as P0A
+  component "Postgres + Redis\\n(local docker-compose)\\n+ run migrations\\n+ verify connectivity" as P0B
+  component "Org kernel invariants\\ndocumented in INVARIANTS.md\\nPR checklist created" as P0C
+}
+
+package "Phase 1 — task store + event bus (days 4-8)" {
+  component "Task store schema\\n(all core fields + tables)\\n+ optimistic lock via version\\n+ all 7 operations\\n+ unit tests for each op" as P1A
+  component "Event bus wrapper\\n(Redis Streams abstraction)\\n+ typed event contracts\\n+ idempotency key on every event\\n+ append to raw event log" as P1B
+  component "Integration test:\\ncreate task → emit event →\\nlog appended → read back" as P1C
+}
+
+package "Phase 2 — workflow engine (days 9-16)" {
+  component "Markdown parser\\n+ schema validator\\n+ workflow registry\\n+ hot reload watcher" as P2A
+  component "State machine runtime\\n(LangGraph)\\n+ linear state transitions\\n+ transition guard\\n+ escalation handler" as P2B
+  component "Deterministic matcher\\n(tag index)\\n+ LLM fallback matcher\\n+ confidence threshold" as P2C
+  component "Integration test:\\nload workflow file →\\nmatch task → transition\\nthrough all states" as P2D
+}
+
+package "Phase 3 — agent layer (days 17-28)" {
+  component "Agent identity config\\n(JSON schema + loader)\\n+ AIEOS integration\\n+ permitted tools list" as P3A
+  component "Specialist agent\\n(ZeroClaw runtime)\\n+ agentic memory read\\n+ tool execution\\n+ self-reflection loop\\n+ event emission" as P3B
+  component "Generalist agent\\n+ team workflow match\\n+ specialist assignment\\n+ sequential join gate\\n+ output review" as P3C
+  component "Kite Runner\\n+ org workflow match\\n+ task creation\\n+ team delegation\\n+ 5-min polling\\n+ human notification" as P3D
+  component "End-to-end test:\\nhuman task → KR →\\ngeneralist → specialist\\n→ completion → notify" as P3E
+}
+
+package "Phase 4 — memory layer (days 29-38)" {
+  component "Graphiti setup\\n+ schema design\\n+ connection layer\\n+ three-tier access rules\\nenforced in code" as P4A
+  component "Memory extraction worker\\n(consumes state_transition\\nevents from bus)\\n+ structured fact extraction\\n+ write to correct tier" as P4B
+  component "Cascade retrieval\\n(agentic → team → org)\\n+ context assembler\\n+ inject into agent prompt" as P4C
+  component "Integration test:\\ncomplete task →\\nmemory written →\\nnew task retrieves context" as P4D
+}
+
+package "Phase 5 — hardening (days 39-48)" {
+  component "Idempotency hardening\\n+ version field on all\\nconsumers + dedup checks\\n+ replay test suite" as P5A
+  component "Escalation paths\\n+ SLA polling (KR)\\n+ retry + escalation\\ncounts enforced\\n+ dead task handler" as P5B
+  component "Basic evaluation\\n(3 signals on task close:\\ncompleted, rework_count,\\nfalse_escalation)" as P5C
+  component "Smoke test suite\\n(happy path + 4 unhappy\\npaths from sequence diagram)" as P5D
+}
+
+P0A --> P0B --> P0C
+P0C --> P1A
+P1A --> P1B --> P1C
+P1C --> P2A
+P2A --> P2B --> P2C --> P2D
+P2D --> P3A
+P3A --> P3B --> P3C --> P3D --> P3E
+P3E --> P4A
+P4A --> P4B --> P4C --> P4D
+P4D --> P5A
+P5A --> P5B --> P5C --> P5D
+
+note right of P1C
+  Each phase ends with
+  an integration test.
+  Don't move to next
+  phase until it passes.
+  Ruthless gate.
+end note
+
+note right of P3E
+  This is the first moment
+  the full orchestration
+  loop works end to end.
+  Everything after is
+  making it production-grade.
+end note
+@enduml`;
+
+const stack=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Language recommendation: Python" {
+  component "Why Python over TypeScript:\\n- LangGraph is Python-native\\n- Graphiti SDK is Python-first\\n- ZeroClaw has Python bindings\\n- LLM SDKs (Anthropic, OpenAI) best in Python\\n- async/await handles orchestration cleanly\\n- Largest agent tooling ecosystem" as LANG
+}
+
+package "Core runtime" {
+  component "Python 3.11+\\n(async support, type hints,\\ndataclasses)" as RT1
+  component "uv\\n(package manager — fast,\\nlock file, replaces pip+venv)" as RT2
+  component "Pydantic v2\\n(data validation, event schemas,\\nagent configs, workflow models)" as RT3
+}
+
+package "Orchestration" {
+  component "LangGraph\\n→ state machine runtime\\n→ workflow transitions\\n→ agent execution loops\\n→ human-in-the-loop support" as OR1
+  component "ZeroClaw\\n→ specialist agent runtime\\n→ AIEOS identity loader\\n→ sandboxed execution" as OR2
+  component "Anthropic SDK\\n(claude-sonnet-4-5 for agents\\nclaude-haiku-4-5 for\\nextraction + matching)" as OR3
+}
+
+package "Storage" {
+  component "Postgres 16\\n→ task store (primary)\\n→ raw event log\\n→ workflow registry cache\\nLibrary: asyncpg + SQLAlchemy" as ST1
+  component "Redis 7 (Streams)\\n→ event bus\\n→ consumer group per worker\\n→ replay buffer\\nLibrary: redis-py async" as ST2
+  component "Graphiti\\n→ knowledge graph\\n→ agentic / team / org memory\\n→ temporal indexing\\nBacked by: Neo4j or SQLite (dev)" as ST3
+}
+
+package "Workflow definitions" {
+  component "Git repo (separate or monorepo)\\n→ markdown files\\n→ hot reload via watchdog\\n→ parsed by PyYAML +\\ncustom schema validator" as WD1
+}
+
+package "Tool layer" {
+  component "OpenFang\\n→ tool registry\\n→ MCP connector\\n→ audit trail\\nPython SDK" as TL1
+  component "Composio (optional)\\n→ pre-built integrations\\n(GitHub, Slack, Jira, email)\\nfor specialist tools" as TL2
+}
+
+package "Infra / devops" {
+  component "Docker + docker-compose\\n→ local dev stack\\n(Postgres + Redis + Neo4j)" as IN1
+  component "Pytest + pytest-asyncio\\n→ unit + integration tests\\n→ async test support" as IN2
+  component "Loguru\\n→ structured logging\\n→ per-component log levels" as IN3
+  component "Pydantic Settings\\n→ env var config\\n→ no hardcoded secrets" as IN4
+}
+
+note right of OR3
+  Use haiku-4-5 for:
+  - workflow matching
+  - memory extraction
+  - intent tagging
+  Fast + cheap for
+  high-frequency ops.
+
+  Use sonnet-4-5 for:
+  - specialist execution
+  - generalist decisions
+  - self-reflection
+  Better reasoning for
+  low-frequency ops.
+end note
+
+note right of ST3
+  Use SQLite-backed Graphiti
+  in development.
+  Switch to Neo4j only
+  when memory queries
+  get slow. Not day one.
+end note
+@enduml`;
+
+const repo=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Monorepo structure" {
+
+  package "/ (root)" {
+    component "pyproject.toml\\ndocker-compose.yml\\n.env.example\\nINVARIANTS.md\\nREADME.md" as ROOT
+  }
+
+  package "/src" {
+    package "/core" {
+      component "task_store/\\n  models.py       — Pydantic schemas\\n  operations.py   — 7 ops\\n  migrations/     — SQL files" as C1
+      component "event_bus/\\n  producer.py     — emit events\\n  consumer.py     — consume + dedup\\n  schemas.py      — typed events" as C2
+      component "workflow_engine/\\n  parser.py       — markdown → model\\n  registry.py     — indexed store\\n  matcher.py      — det. + LLM match\\n  runtime.py      — LangGraph SM\\n  hot_reload.py   — watchdog" as C3
+    }
+
+    package "/agents" {
+      component "base/\\n  identity.py     — AIEOS config loader\\n  memory.py       — cascade retrieval\\n  reflection.py   — self-reflect loop" as A1
+      component "kite_runner/\\n  agent.py        — KR logic\\n  polling.py      — 5-min tracker" as A2
+      component "generalist/\\n  agent.py        — team lead logic\\n  join_gate.py    — ALL_SUCCESS" as A3
+      component "specialist/\\n  agent.py        — ZeroClaw executor\\n  tools.py        — OpenFang bridge" as A4
+    }
+
+    package "/memory" {
+      component "graphiti/\\n  client.py       — Graphiti connection\\n  writer.py       — tiered writes\\n  retrieval.py    — cascade read\\n  extraction.py   — LLM fact extract" as M1
+      component "event_worker/\\n  worker.py       — consumes transitions\\n  processor.py    — extract + write" as M2
+    }
+
+    package "/evaluation" {
+      component "signals.py\\n  — 3 signals on task close\\n  — completed, rework, escalation" as EV1
+    }
+
+    package "/api" {
+      component "gateway.py      — FastAPI app\\nroutes/\\n  tasks.py        — submit + status\\n  health.py       — readiness check" as AP1
+    }
+  }
+
+  package "/workflows" {
+    component "org/\\n  default.md\\n  bug-fix.md\\nteams/\\n  engineering/\\n    fix-bug.md\\n    deploy.md\\n  qa/\\n    review.md\\nagents/\\n  specialist-debug.md" as WF1
+  }
+
+  package "/agents_config" {
+    component "kite_runner.json\\nengineering_lead.json\\nfrontend_specialist.json\\nqa_specialist.json" as AC1
+  }
+
+  package "/tests" {
+    component "unit/\\n  test_task_store.py\\n  test_workflow_engine.py\\n  test_matcher.py\\nintegration/\\n  test_phase1.py      — task+events\\n  test_phase2.py      — workflow\\n  test_phase3.py      — e2e flow\\n  test_phase4.py      — memory\\n  test_phase5.py      — hardening\\nfixtures/" as TE1
+  }
+
+  package "/infra" {
+    component "postgres/\\n  init.sql\\nredis/\\n  redis.conf\\ndocker-compose.yml" as IN1
+  }
+}
+
+note right of WF1
+  Workflow files live
+  outside /src on purpose.
+  Human-owned content
+  should not be mixed
+  with application code.
+  Separate git history,
+  separate PR process.
+end note
+
+note right of AC1
+  Agent configs are data,
+  not code. JSON files
+  loaded at runtime by
+  identity.py. Easy to
+  add new agents without
+  touching source code.
+end note
+@enduml`;
+
+const effort=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #FAEEDA
+skinparam noteBorderColor #854F0B
+
+package "Effort estimates — solo builder, ~6hr/day" {
+
+  package "Phase 0 — scaffolding (3 days / ~18hrs)" {
+    component "Monorepo + tooling setup         1 day\\nPostgres + Redis docker-compose    0.5 days\\nInvariants doc + PR checklist      0.5 days" as E0
+  }
+
+  package "Phase 1 — task store + event bus (5 days / ~30hrs)" {
+    component "Task store schema + migrations    1 day\\nAll 7 operations + unit tests      1.5 days\\nEvent bus wrapper + schemas        1 day\\nIdempotency keys + dedup           0.5 days\\nIntegration test (P1 gate)         1 day" as E1
+  }
+
+  package "Phase 2 — workflow engine (8 days / ~48hrs)" {
+    component "Markdown parser + validator       1 day\\nWorkflow registry + hot reload     1 day\\nState machine runtime (LangGraph)  2 days\\nDeterministic matcher              1.5 days\\nLLM fallback matcher               1 day\\nEscalation handler                 0.5 days\\nIntegration test (P2 gate)         1 day" as E2
+  }
+
+  package "Phase 3 — agent layer (12 days / ~72hrs)" {
+    component "Agent identity config + loader    1 day\\nSpecialist agent (ZeroClaw)        2.5 days\\nSelf-reflection loop               1 day\\nGeneralist agent                   2 days\\nKite Runner                        2 days\\nOpenFang tool integration          1.5 days\\nEnd-to-end integration test        2 days" as E3
+  }
+
+  package "Phase 4 — memory layer (10 days / ~60hrs)" {
+    component "Graphiti setup + schema           1.5 days\\nThree-tier access rules in code    1 day\\nMemory extraction worker           2 days\\nFact extraction (LLM prompt)       1.5 days\\nCascade retrieval + assembler      2 days\\nContext injection into agents      1 day\\nIntegration test (P4 gate)         1 day" as E4
+  }
+
+  package "Phase 5 — hardening (10 days / ~60hrs)" {
+    component "Idempotency hardening + replay    2 days\\nSLA polling + retry logic          1.5 days\\nEscalation counts + dead task      1.5 days\\nBasic evaluation 3 signals         1 day\\nSmoke test suite (5 scenarios)     2 days\\nBug fixing buffer                  2 days" as E5
+  }
+
+  package "Total" {
+    component "V1 complete: ~48 working days\\n~8 calendar weeks (solo, focused)\\n~288 hours total\\n\\nRealistic with life: 10-12 weeks\\n\\nFirst testable loop (end of P3): week 5\\nProduction-grade V1 (end of P5): week 10" as TOT
+  }
+}
+
+note right of E3
+  Phase 3 is the hardest.
+  Agent behaviour is
+  non-deterministic.
+  Budget extra time for
+  prompt engineering and
+  integration debugging.
+  The 2-day e2e test
+  budget will get used.
+end note
+
+note right of E4
+  Memory retrieval quality
+  is hard to test mechanically.
+  Budget time for qualitative
+  evaluation — run real tasks,
+  check what context gets
+  retrieved, tune prompts.
+end note
+
+note right of TOT
+  Week 5 milestone is key.
+  At that point you have a
+  working orchestration loop.
+  Everything after is
+  making it trustworthy.
+  Show it to someone at
+  week 5 — real feedback
+  is worth more than
+  perfect hardening.
+end note
+@enduml`;
+
+render('phases', phases);
+render('stack', stack);
+render('repo', repo);
+render('effort', effort);
+</script>

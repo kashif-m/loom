@@ -1,0 +1,465 @@
+
+<style>
+.tabs{display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:5px 11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:11px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.panel{display:none}.panel.active{display:block}
+.diagram-wrap{text-align:center;padding:8px 0}
+.diagram-wrap img{max-width:100%;height:auto}
+.error{color:var(--color-text-danger);font-size:13px;padding:12px}
+.loading{color:var(--color-text-secondary);font-size:13px;padding:12px}
+</style>
+<div class="tabs">
+  <button class="tab active" onclick="show('language')">Language spec</button>
+  <button class="tab" onclick="show('ir')">IR design</button>
+  <button class="tab" onclick="show('compiler')">Compiler pipeline</button>
+  <button class="tab" onclick="show('runtime')">Runtime interface</button>
+  <button class="tab" onclick="show('distribution')">Distribution model</button>
+  <button class="tab" onclick="show('example')">Full example</button>
+</div>
+<div id="language"     class="panel active"><div class="diagram-wrap"><div class="loading" id="language-status">Rendering...</div><img id="language-img" style="display:none"/></div></div>
+<div id="ir"          class="panel"><div class="diagram-wrap"><div class="loading" id="ir-status">Rendering...</div><img id="ir-img" style="display:none"/></div></div>
+<div id="compiler"    class="panel"><div class="diagram-wrap"><div class="loading" id="compiler-status">Rendering...</div><img id="compiler-img" style="display:none"/></div></div>
+<div id="runtime"     class="panel"><div class="diagram-wrap"><div class="loading" id="runtime-status">Rendering...</div><img id="runtime-img" style="display:none"/></div></div>
+<div id="distribution" class="panel"><div class="diagram-wrap"><div class="loading" id="distribution-status">Rendering...</div><img id="distribution-img" style="display:none"/></div></div>
+<div id="example"     class="panel"><div class="diagram-wrap"><div class="loading" id="example-status">Rendering...</div><img id="example-img" style="display:none"/></div></div>
+<script>
+const TABS=['language','ir','compiler','runtime','distribution','example'];
+function show(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===id));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id));
+}
+function toHex(str){return Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+function render(id,puml){
+  const url=`https://www.plantuml.com/plantuml/svg/~h${toHex(puml)}`;
+  const img=document.getElementById(id+'-img');
+  const status=document.getElementById(id+'-status');
+  img.onload=()=>{status.style.display='none';img.style.display='block';};
+  img.onerror=()=>{status.className='error';status.textContent='Could not load — needs plantuml.com access';};
+  img.src=url;
+}
+
+const language=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Loom DSL — surface language spec" {
+
+  package "5 top-level constructs" {
+    component "org \\"name\\" { ... }\\n─────────────────────────────\\nkite_runner = <agent_ref>\\nmemory      = <memory_block>\\ndescription = string (optional)" as CORG
+
+    component "team \\"name\\" { ... }\\n─────────────────────────────\\nlead        = <agent_ref>  [required]\\nmembers     = [<agent_ref>, ...]\\nworkflows   = [<workflow_ref>, ...]\\nmemory      = <memory_block>\\ndescription = string (optional)" as CTEAM
+
+    component "agent \\"name\\" { ... }\\n─────────────────────────────\\nrole         = kr|generalist|specialist  [required]\\nmodel        = fast|reasoning            [required]\\nmemory_scope = agentic|team|org          [required]\\ntools        = [<tool_ref>, ...]\\nmax_concurrent = int (default: 1)\\nsandbox      = <sandbox_block> (if tools need it)\\ndescription  = string (optional)" as CAGENT
+
+    component "workflow \\"name\\" { ... }\\n─────────────────────────────\\nlevel        = org|team|agentic   [required]\\ntrigger      = string             [required]\\ntags         = [string, ...]      [required, min 1]\\nstates       = [string, ...]      [required, min 2]\\nsuccess      = string             [required]\\nescalate_if  = string             [required — INV-10]\\nassigned_to  = <role|agent_ref>   [required]\\nversion      = string (default: v1)\\nsla_hours    = int (optional)" as CWFLOW
+
+    component "tool \\"name\\" { ... }\\n─────────────────────────────\\ntype            = builtin|mcp|custom  [required]\\nsource          = string              [required]\\npermitted_roles = [role, ...]         [required]\\nsandbox         = required|none       [required]\\ndescription     = string (optional)" as CTOOL
+  }
+
+  package "Inline block types" {
+    component "memory { ... }\\n─────────────────────────────\\nbackend       = sqlite|neo4j|postgres\\nretention     = permanent|rolling\\nretention_days = int (if rolling)" as BMEM
+
+    component "sandbox { ... }\\n─────────────────────────────\\nnetwork  = none|allowlist\\nallowlist = [string, ...] (if network=allowlist)\\ncpu      = string (e.g. \\"2\\")\\nmemory   = string (e.g. \\"512m\\")\\ntimeout  = int (seconds)" as BSAND
+  }
+
+  package "Reference syntax" {
+    component "agent.frontend_specialist\\nteam.engineering\\nworkflow.fix_bug\\ntool.code_exec\\n─────────────────────────────\\nDot-qualified references.\\nAll refs resolved at compile time.\\nDangling ref = compile error." as REFS
+  }
+
+  package "File conventions" {
+    component "loom.toml           — project config (name, version, entry)\\n*.loom              — source files (any name, any depth)\\n.loom/              — compiler output directory\\n  ir.json           — compiled IR (committed to git)\\n  ir.json.sig       — IR hash for integrity check\\nloom-lock.json      — resolved dependency lock" as FILES
+  }
+}
+
+note right of CWFLOW
+  escalate_if is REQUIRED.
+  Not providing it is a
+  compile error, not a warning.
+  This is INV-10 enforced
+  at the language level.
+  You cannot express a workflow
+  without an escalation path.
+end note
+
+note right of CAGENT
+  role drives compile-time rules:
+  kr       → no members, no tools
+             except notify+query
+  generalist → must have members,
+             cannot use sandbox tools
+  specialist → no members, no
+             team references allowed
+end note
+@enduml`;
+
+const ir=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #FAEEDA
+skinparam noteBorderColor #854F0B
+
+package "Loom IR — intermediate representation" {
+
+  package "IR envelope (top level of ir.json)" {
+    component "loom_ir_version: \\"1.0\\"\\ncompiled_at: timestamp\\ncompiled_by: loom-compiler version\\nsource_hash: SHA256 of all .loom sources\\norg: <OrgManifest>\\nagents: { name: AgentManifest }\\nteams: { name: TeamManifest }\\nworkflows: { name: WorkflowManifest }\\ntools: { name: ToolManifest }" as ENV
+  }
+
+  package "OrgManifest" {
+    component "name: string\\nkite_runner_id: string\\nmemory: MemoryConfig\\ndescription: string" as ORG
+  }
+
+  package "AgentManifest (fully resolved — no refs)" {
+    component "id: string\\nrole: kr|generalist|specialist\\nmodel_role: fast|reasoning\\nmemory_scope: agentic|team|org\\ntool_ids: [string]\\nmax_concurrent: int\\nsandbox: SandboxConfig | null\\nteam_id: string | null\\ndescription: string" as AGENT
+  }
+
+  package "TeamManifest (fully resolved)" {
+    component "id: string\\nlead_agent_id: string\\nmember_agent_ids: [string]\\nworkflow_ids: [string]\\nmemory: MemoryConfig\\ndescription: string" as TEAM
+  }
+
+  package "WorkflowManifest (fully resolved)" {
+    component "id: string\\nversion: string\\nlevel: org|team|agentic\\ntrigger: string\\ntags: [string]\\nstates: [StateDefinition]\\nsuccess_condition: string\\nescalation_condition: string\\nassigned_role: kr|generalist|specialist\\nassigned_agent_id: string | null\\nsla_hours: int | null" as WFLOW
+  }
+
+  package "StateDefinition" {
+    component "name: string\\nindex: int\\nis_terminal: bool\\ntransition_to: string | null" as STATE
+  }
+
+  package "ToolManifest (fully resolved)" {
+    component "id: string\\ntype: builtin|mcp|custom\\nsource: string\\npermitted_role_ids: [string]\\nsandbox_required: bool\\ndescription: string" as TOOL
+  }
+
+  package "MemoryConfig" {
+    component "backend: sqlite|neo4j|postgres\\nretention: permanent|rolling\\nretention_days: int | null" as MEM
+  }
+
+  package "SandboxConfig" {
+    component "network: none|allowlist\\nallowlist: [string]\\ncpu: string\\nmemory: string\\ntimeout_seconds: int" as SAND
+  }
+}
+
+note right of ENV
+  The IR is fully resolved.
+  No references remain —
+  everything is inlined by ID.
+  A runtime needs only ir.json
+  to execute. No source files
+  required at runtime.
+end note
+
+note right of AGENT
+  team_id is null for KR.
+  All other agents always
+  have a team_id.
+  This is validated at
+  compile time.
+end note
+
+note bottom
+  IR is JSON. Schema published at:
+  schema.loom.dev/ir/v1.json
+  Runtimes validate ir.json against
+  this schema on load. If it loads,
+  it's valid. Runtime never re-checks
+  invariants — the compiler already did.
+end note
+@enduml`;
+
+const compiler=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "loom-compiler — 5 stage pipeline" {
+
+  package "Stage 1: Scan + Parse" {
+    component "File scanner\\n(discovers all *.loom files\\nin project recursively)" as S1A
+    component "Lexer\\n(tokenises each file:\\nkeywords, identifiers,\\nstrings, refs, blocks)" as S1B
+    component "Parser\\n(produces AST per file:\\nblock type, name, fields,\\nnested blocks, refs)" as S1C
+  }
+
+  package "Stage 2: Resolve" {
+    component "Symbol table builder\\n(registers all named blocks:\\norg, team, agent,\\nworkflow, tool)" as S2A
+    component "Reference resolver\\n(replaces agent.X refs\\nwith actual symbol IDs,\\ncatches dangling refs)" as S2B
+    component "Duplicate detector\\n(two agents with same name\\n= compile error)" as S2C
+  }
+
+  package "Stage 3: Validate (invariant enforcement)" {
+    component "Topology rules\\n· exactly one org block\\n· exactly one kr agent\\n· specialist has no members\\n· generalist has members\\n· no circular team refs" as S3A
+    component "Memory scope rules\\n· kr → org scope only\\n· generalist → team scope\\n· specialist → agentic scope\\n· scope must match role" as S3B
+    component "Workflow rules\\n· escalate_if present (INV-10)\\n· level matches assigned_to role\\n· min 2 states\\n· org workflows → kr only\\n· agentic workflows → specialist" as S3C
+    component "Tool rules\\n· sandbox tools → specialist only\\n· kr tools → notify+query only\\n· tool refs exist in symbol table" as S3D
+  }
+
+  package "Stage 4: Emit IR" {
+    component "IR builder\\n(flattens AST into\\nfully-resolved IR structs,\\nall refs replaced by IDs)" as S4A
+    component "JSON serialiser\\n(writes ir.json with\\nloom_ir_version envelope)" as S4B
+    component "Hash signer\\n(SHA256 of source files\\n→ ir.json.sig)" as S4C
+  }
+
+  package "Stage 5: Output" {
+    component "Write .loom/ir.json\\n(commit this to git)" as S5A
+    component "Write .loom/ir.json.sig\\n(integrity check)" as S5B
+    component "Print compile report\\n(N agents, M workflows,\\nK tools — compiled in Xms)" as S5C
+  }
+
+  package "Error reporting" {
+    component "Structured error format:\\nFILE:LINE:COL  [ERR-XXX]\\nError message\\nContext + suggestion\\n\\nExample:\\nagents/specialist.loom:12:3  [ERR-006]\\nAgent 'frontend_specialist' has role=specialist\\nbut references team.qa_team.\\nSpecialists cannot reference other teams." as ERR
+  }
+}
+
+S1A --> S1B --> S1C
+S1C --> S2A --> S2B --> S2C
+S2C --> S3A & S3B & S3C & S3D
+S3A & S3B & S3C & S3D --> S4A : all pass
+S3A & S3B & S3C & S3D --> ERR : any fail
+S4A --> S4B --> S4C
+S4C --> S5A & S5B & S5C
+
+note right of ERR
+  Error codes are stable
+  across compiler versions.
+  ERR-001 always means
+  the same thing.
+  Tooling (IDEs, linters)
+  can key off error codes.
+end note
+
+note right of S5A
+  ir.json is committed to git.
+  Runtime clones the repo
+  and loads ir.json directly.
+  Source .loom files are for
+  humans. IR is for machines.
+end note
+@enduml`;
+
+const runtime=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Runtime interface contract" {
+
+  package "What any runtime MUST implement" {
+    component "IR loader\\n· load ir.json\\n· validate against IR JSON schema\\n· fail fast on schema mismatch" as RI1
+
+    component "Agent executor\\n· instantiate agents from AgentManifest\\n· inject identity, tools, memory scope\\n· run complete_state(state, context) loop" as RI2
+
+    component "Workflow runner\\n· build state machine from WorkflowManifest\\n· match incoming task to workflow\\n· drive state transitions\\n· enforce escalation_condition" as RI3
+
+    component "Memory adapter\\n· implement read(agent_id, scope, query)\\n· implement write(agent_id, scope, facts)\\n· respect tier isolation from IR config" as RI4
+
+    component "Tool executor\\n· check tool_ids against agent manifest\\n· enforce sandbox config from IR\\n· log all tool calls" as RI5
+
+    component "Event emitter\\n· emit typed events on every transition\\n· include idempotency_key\\n· append to event log" as RI6
+
+    component "Task store adapter\\n· implement 7 task operations\\n· enforce optimistic locking\\n· append-only history" as RI7
+  }
+
+  package "Runtime lifecycle" {
+    component "1. Load IR\\n   loom_runtime.load(\\"path/to/.loom/ir.json\\")" as RL1
+    component "2. Validate IR version\\n   must match runtime's supported IR versions" as RL2
+    component "3. Wire adapters\\n   memory, task store, event bus, tools" as RL3
+    component "4. Start\\n   begin accepting tasks" as RL4
+  }
+
+  package "Reference runtimes" {
+    component "loom-runtime-python\\n(reference implementation)\\nPython 3.11+, LangGraph,\\nPydanticAI, Instructor\\nships with Loom core" as RT1
+
+    component "loom-runtime-ts\\n(community / future)\\nTypeScript, Vercel AI SDK\\nXState for state machine" as RT2
+
+    component "loom-runtime-go\\n(community / future)\\nGo, minimal deps,\\nhigh throughput focus" as RT3
+  }
+
+  package "IR version compatibility" {
+    component "IR version: 1.0\\nRuntime declares:\\n  supported_ir_versions: [\\"1.0\\", \\"1.1\\"]\\nBackward compat guaranteed\\nwithin major version.\\nBreaking changes = IR 2.0" as VER
+  }
+}
+
+RL1 --> RL2 --> RL3 --> RL4
+RT1 & RT2 & RT3 --> RI1 : must implement all
+
+note right of RT1
+  loom-runtime-python is
+  the reference runtime.
+  It ships with Loom.
+  All other runtimes are
+  validated against the
+  same compliance test suite.
+end note
+
+note right of VER
+  The IR version contract
+  is what makes multi-runtime
+  possible. Any runtime that
+  passes the compliance suite
+  for IR v1.0 can run any
+  org definition compiled
+  to IR v1.0.
+end note
+@enduml`;
+
+const distribution=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Distribution model — git-based" {
+
+  package "Org repo structure (what Acme Corp ships)" {
+    component "acme-loom/\\n├── loom.toml           — project config\\n├── loom-lock.json      — compiler lock file\\n├── .loom/\\n│   ├── ir.json         — compiled IR (committed)\\n│   └── ir.json.sig     — integrity hash\\n├── agents/\\n│   ├── coordinator.loom\\n│   ├── eng_lead.loom\\n│   └── specialists.loom\\n├── teams/\\n│   └── engineering.loom\\n├── workflows/\\n│   ├── org/triage.loom\\n│   └── teams/fix_bug.loom\\n├── tools/\\n│   └── tools.loom\\n└── org.loom            — top-level org block" as REPO
+  }
+
+  package "loom.toml — project config" {
+    component "[project]\\nname    = \\"acme\\"\\nversion = \\"1.0.0\\"\\n\\n[compiler]\\nloom_version = \\">=1.0\\"\\n\\n[runtime]\\ntarget  = \\"loom-runtime-python\\"\\nversion = \\">=1.0\\"\\n\\n[memory]\\nbackend = \\"sqlite\\"\\n\\n[llm]\\nproxy_url = \\"${LITELLM_PROXY_URL}\\"" as TOML
+  }
+
+  package "Distribution flow" {
+    component "Author writes .loom files\\n+ runs: loom compile\\n→ produces .loom/ir.json" as DF1
+    component "Commits ir.json to git\\n(source + compiled artifact\\nboth in repo)" as DF2
+    component "Pushes to GitHub/GitLab/etc" as DF3
+    component "Runtime operator:\\ngit clone acme-loom\\nloom run\\n→ loads .loom/ir.json\\n→ starts serving" as DF4
+    component "CI/CD hook (optional):\\non push to main →\\nloom compile + validate\\n→ fail PR if compile error" as DF5
+  }
+
+  package "Multi-org on one runtime" {
+    component "One Loom runtime instance\\ncan load multiple org IRs.\\nEach org is isolated:\\n- separate task store\\n- separate memory\\n- separate event bus\\n- shared tool registry\\n  (if tools are compatible)" as MULTI
+  }
+
+  package "Loom CLI (what ships with the framework)" {
+    component "loom compile        — compile *.loom → ir.json\\nloom validate       — validate ir.json schema only\\nloom run            — start runtime with ir.json\\nloom check          — compile + validate, no output\\nloom diff           — diff two ir.json versions\\nloom inspect        — human-readable IR summary\\nloom new            — scaffold new org from template" as CLI
+  }
+}
+
+DF1 --> DF2 --> DF3
+DF3 --> DF4
+DF3 --> DF5
+
+note right of DF2
+  Committing ir.json is intentional.
+  It means any clone is immediately
+  runnable without needing the
+  compiler installed.
+  Source .loom files are for
+  authoring. ir.json is for
+  deployment.
+end note
+
+note right of CLI
+  loom new creates:
+  - loom.toml
+  - org.loom (stub)
+  - agents/ (examples)
+  - workflows/ (examples)
+  - tools/ (examples)
+  Getting started takes
+  under 5 minutes.
+end note
+@enduml`;
+
+const example=`
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Full example — Hyperswitch bug fix in .loom syntax" {
+
+  package "org.loom" {
+    component "org \\"hyperswitch\\" {\\n  description = \\"Hyperswitch payment platform\\"\\n  kite_runner = agent.coordinator\\n  memory {\\n    backend    = sqlite\\n    retention  = permanent\\n  }\\n}" as EX_ORG
+  }
+
+  package "agents/coordinator.loom" {
+    component "agent \\"coordinator\\" {\\n  description  = \\"Org-level orchestrator\\"\\n  role         = kr\\n  model        = reasoning\\n  memory_scope = org\\n  tools        = [tool.notify, tool.task_query]\\n}" as EX_KR
+  }
+
+  package "agents/eng_lead.loom" {
+    component "agent \\"eng_lead\\" {\\n  description  = \\"Engineering team lead\\"\\n  role         = generalist\\n  model        = reasoning\\n  memory_scope = team\\n  tools        = [tool.task_query]\\n}" as EX_GL
+  }
+
+  package "agents/frontend_specialist.loom" {
+    component "agent \\"frontend_specialist\\" {\\n  description  = \\"Frontend engineer\\"\\n  role         = specialist\\n  model        = reasoning\\n  memory_scope = agentic\\n  tools = [\\n    tool.code_exec,\\n    tool.file_read,\\n    tool.file_write,\\n    tool.web_search\\n  ]\\n  sandbox {\\n    network = none\\n    cpu     = \\"2\\"\\n    memory  = \\"512m\\"\\n    timeout = 60\\n  }\\n}" as EX_SP
+  }
+
+  package "teams/engineering.loom" {
+    component "team \\"engineering\\" {\\n  description = \\"Core engineering team\\"\\n  lead        = agent.eng_lead\\n  members     = [\\n    agent.frontend_specialist,\\n    agent.backend_specialist\\n  ]\\n  workflows   = [workflow.fix_bug]\\n  memory {\\n    backend    = sqlite\\n    retention  = rolling\\n    retention_days = 90\\n  }\\n}" as EX_TEAM
+  }
+
+  package "workflows/teams/fix_bug.loom" {
+    component "workflow \\"fix_bug\\" {\\n  description  = \\"Fix a reported bug\\"\\n  level        = team\\n  version      = \\"v1\\"\\n  trigger      = \\"bug reported on production system\\"\\n  tags         = [bug, fix, production, engineering]\\n  assigned_to  = agent.eng_lead\\n  sla_hours    = 24\\n\\n  states = [\\n    received,\\n    investigating,\\n    fixing,\\n    in_review,\\n    done\\n  ]\\n\\n  success     = \\"Fix merged and verified in prod\\"\\n  escalate_if = \\"No state change after 2 retries OR\\\\n                 blocker unresolved after 4 hours\\"\\n}" as EX_WF
+  }
+
+  package "tools/tools.loom" {
+    component "tool \\"code_exec\\" {\\n  type            = builtin\\n  source          = \\"loom.tools.code_execution\\"\\n  permitted_roles = [specialist]\\n  sandbox         = required\\n}\\n\\ntool \\"notify\\" {\\n  type            = builtin\\n  source          = \\"loom.tools.notify\\"\\n  permitted_roles = [kr, generalist]\\n  sandbox         = none\\n}\\n\\ntool \\"web_search\\" {\\n  type            = mcp\\n  source          = \\"mcp://brave-search\\"\\n  permitted_roles = [specialist]\\n  sandbox         = none\\n}" as EX_TOOLS
+  }
+}
+
+note right of EX_WF
+  Compile errors this definition
+  would catch:
+  ─────────────────────────────
+  1. Remove escalate_if →
+     ERR-010: escalate_if required
+  2. assigned_to = agent.frontend_specialist →
+     ERR-023: team workflow must
+     be assigned to generalist
+  3. Add members to coordinator →
+     ERR-007: kr agent cannot
+     have members
+  4. Add tool.code_exec to eng_lead →
+     ERR-031: generalist cannot
+     use sandbox-required tools
+end note
+@enduml`;
+
+render('language', language);
+render('ir', ir);
+render('compiler', compiler);
+render('runtime', runtime);
+render('distribution', distribution);
+render('example', example);
+</script>

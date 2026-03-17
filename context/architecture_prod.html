@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Virtual Organisation Architecture v4</title>
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --panel: #ffffff;
+    --panel-2: #f5f3ec;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #d8d3c7;
+    --border-strong: #b8b1a0;
+    --accent: #534ab7;
+    --accent-soft: #eeedfe;
+    --success-soft: #e1f5ee;
+    --warning-soft: #faece7;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.45;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 28px 20px 40px; }
+  .header {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+  }
+  .title { margin: 0 0 8px; font-size: 28px; line-height: 1.2; }
+  .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
+  .tabs { display:flex; gap:8px; margin: 0 0 14px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    background: var(--panel);
+    color: var(--muted);
+  }
+  .tab.active {
+    background: var(--accent-soft);
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+  }
+  .panel-head { margin-bottom: 10px; }
+  .panel-title { margin: 0 0 4px; font-size: 18px; }
+  .panel-copy { margin: 0; color: var(--muted); font-size: 14px; }
+  .diagram-wrap { text-align:center; padding: 8px 0 4px; min-height: 420px; }
+  .diagram-wrap img { max-width:100%; height:auto; border-radius: 10px; }
+  .error { color:#b42318; font-size:14px; padding:12px; background: var(--warning-soft); border-radius: 12px; display:inline-block; }
+  .loading { color: var(--muted); font-size:14px; padding:12px; }
+  .foot { margin-top: 14px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <h1 class="title">Virtual Organisation Architecture — v4</h1>
+      <p class="subtitle">Updated to incorporate boundary tightening around KR drill-down access, role/topology separation, skill-aware scheduling, bounded preemption, advisory evaluation, and evidence-based memory confidence.</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="show('kernel')">Org kernel</button>
+      <button class="tab" onclick="show('identity')">Agent identity</button>
+      <button class="tab" onclick="show('capacity')">Capacity &amp; scheduling</button>
+      <button class="tab" onclick="show('idempotency')">Idempotency</button>
+      <button class="tab" onclick="show('branches')">Branch / join</button>
+      <button class="tab" onclick="show('eval')">Evaluation layer</button>
+      <button class="tab" onclick="show('wfversion')">Workflow versioning</button>
+      <button class="tab" onclick="show('memwrite')">Memory write criteria</button>
+    </div>
+
+    <div id="kernel" class="panel active">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Organisation kernel</h2>
+          <p class="panel-copy">The constitutional invariants the whole system must obey.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="kernel-status">Rendering diagram...</div><img id="kernel-img" style="display:none" alt="Org kernel diagram" /></div>
+      </div>
+    </div>
+
+    <div id="identity" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Agent identity and runtime model</h2>
+          <p class="panel-copy">Separates stable identity, org topology, delegated authority, and live execution posture.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="identity-status">Rendering diagram...</div><img id="identity-img" style="display:none" alt="Agent identity diagram" /></div>
+      </div>
+    </div>
+
+    <div id="capacity" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Capacity and scheduling</h2>
+          <p class="panel-copy">Skill-aware assignment and bounded preemption, rather than simple least-loaded routing.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="capacity-status">Rendering diagram...</div><img id="capacity-img" style="display:none" alt="Capacity diagram" /></div>
+      </div>
+    </div>
+
+    <div id="idempotency" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Idempotency and replay safety</h2>
+          <p class="panel-copy">The distributed-systems guardrails that keep orchestration safe under duplicate delivery and replay.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="idempotency-status">Rendering diagram...</div><img id="idempotency-img" style="display:none" alt="Idempotency diagram" /></div>
+      </div>
+    </div>
+
+    <div id="branches" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Branch and join semantics</h2>
+          <p class="panel-copy">How parallel work, success thresholds, and compensation behave.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="branches-status">Rendering diagram...</div><img id="branches-img" style="display:none" alt="Branch and join diagram" /></div>
+      </div>
+    </div>
+
+    <div id="eval" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Evaluation layer</h2>
+          <p class="panel-copy">Advisory scoring and objective signals for trend detection, workflow review, and coaching.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="eval-status">Rendering diagram...</div><img id="eval-img" style="display:none" alt="Evaluation diagram" /></div>
+      </div>
+    </div>
+
+    <div id="wfversion" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Workflow versioning</h2>
+          <p class="panel-copy">Version lifecycle, in-flight pinning, and rollback discipline.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="wfversion-status">Rendering diagram...</div><img id="wfversion-img" style="display:none" alt="Workflow versioning diagram" /></div>
+      </div>
+    </div>
+
+    <div id="memwrite" class="panel">
+      <div class="card">
+        <div class="panel-head">
+          <h2 class="panel-title">Memory write criteria</h2>
+          <p class="panel-copy">Evidence-based memory formation with stronger trigger rules and validation-aware confidence.</p>
+        </div>
+        <div class="diagram-wrap"><div class="loading" id="memwrite-status">Rendering diagram...</div><img id="memwrite-img" style="display:none" alt="Memory write diagram" /></div>
+      </div>
+    </div>
+
+    <div class="foot">This document renders PlantUML diagrams from plantuml.com. Internet access is required to load the diagrams.</div>
+  </div>
+
+<script>
+const TABS = ['kernel','identity','capacity','idempotency','branches','eval','wfversion','memwrite'];
+function show(id) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', TABS[i] === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === id));
+}
+function toHex(str) {
+  return Array.from(new TextEncoder().encode(str)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+function render(id, puml) {
+  const url = `https://www.plantuml.com/plantuml/svg/~h${toHex(puml)}`;
+  const img = document.getElementById(id + '-img');
+  const status = document.getElementById(id + '-status');
+  img.onload = () => { status.style.display = 'none'; img.style.display = 'block'; };
+  img.onerror = () => { status.className = 'error'; status.textContent = 'Could not load diagram — plantuml.com access is required.'; };
+  img.src = url;
+}
+
+const kernel = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam noteBackgroundColor #FAECE7
+skinparam noteBorderColor #993C1D
+skinparam arrowColor #534AB7
+
+package "Organisation kernel — non-negotiable invariants" {
+
+  package "State invariants" {
+    component "INV-01\nTask state lives only in Task Store.\nNowhere else." as I1
+    component "INV-02\nOnly workflow runtime may transition task state.\nNo agent writes state directly." as I2
+    component "INV-03\nAll state transitions emit an append-only event.\nNo silent transitions." as I3
+    component "INV-04\nMemory never mutates control plane state.\nKnowledge plane is read-only from control." as I4
+  }
+
+  package "Agent invariants" {
+    component "INV-05\nNo agent reads another agent's private memory.\nEver. No exceptions." as I5
+    component "INV-06\nOnly agents with delegated cross-team authority\nmay initiate cross-team handoffs." as I6
+    component "INV-07\nKR reads org memory by default.\nDirect team/agentic drill-down only via\naudited review workflow." as I7
+    component "INV-08\nAgent identity is immutable per instance.\nRole mode may change, identity does not." as I8
+  }
+
+  package "Workflow invariants" {
+    component "INV-09\nWorkflow definitions are human-owned.\nAgents may suggest, never self-modify." as I9
+    component "INV-10\nEvery in-flight task is pinned to a workflow version.\nVersion cannot change mid-task." as I10
+    component "INV-11\nAll escalations are explicit events.\nNo implicit failure swallowing." as I11
+  }
+
+  package "Event invariants" {
+    component "INV-12\nAll event consumers are idempotent.\nDuplicate events must be safe." as I12
+    component "INV-13\nAudit trail is append-only and immutable.\nNo deletes. No edits." as I13
+    component "INV-14\nMemory writes trigger only on state transitions\nand explicit memory-worthy domain events.\nNever on every low-level event." as I14
+  }
+
+  package "Evaluation invariants" {
+    component "INV-15\nEvery closed task emits an evaluation record.\nNo task closes without scoring." as I15
+  }
+}
+
+note bottom
+  These 15 invariants are the contract the entire system must honour.
+  Any implementation decision that violates one of these is wrong by definition.
+  Review against this list before merging any architecture change.
+end note
+@enduml`;
+const identity = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam classBackgroundColor #EEEDFE
+skinparam classBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+
+package "Agent identity and runtime model" {
+
+  class AgentInstance {
+    + agent_id: UUID
+    + created_at: timestamp
+    + identity_hash: string
+    + agent_config_id: UUID
+    --
+    identity is immutable
+    survives LLM restarts
+  }
+
+  class AgentConfig {
+    + name: string
+    + description: string
+    + capabilities: string[]
+    + permitted_tools: string[]
+    + authority_profile: AuthorityProfile
+    + memory_scope: MemoryScope
+  }
+
+  enum AuthorityProfile {
+    ORG_ROUTING
+    TEAM_ROUTING
+    DIRECT_EXECUTION
+    REVIEW_AUTHORITY
+  }
+
+  enum OrgPosition {
+    ORG_HEAD
+    TEAM_LEAD
+    TEAM_MEMBER
+  }
+
+  enum RoleMode {
+    ORCHESTRATING
+    EXECUTING
+    REVIEWING
+    BLOCKED
+    IDLE
+  }
+
+  enum ExecutionPosture {
+    DELEGATE_FIRST
+    EXECUTE_FIRST
+    ESCALATE_ONLY
+  }
+
+  enum MemoryScope {
+    AGENTIC_ONLY
+    AGENTIC_AND_TEAM
+    AGENTIC_TEAM_AND_ORG
+  }
+
+  class TeamMembership {
+    + team_id: UUID
+    + team_name: string
+    + joined_at: timestamp
+    + role_in_team: string
+  }
+
+  class AgentTopology {
+    + agent_id: UUID
+    + parent_id: UUID
+    + children_ids: UUID[]
+    + team_id: UUID
+    + org_position: OrgPosition
+    --
+    topology defines reporting line
+    not execution posture
+  }
+
+  class DelegationPolicy {
+    + agent_id: UUID
+    + default_posture: ExecutionPosture
+    + may_delegate_cross_team: boolean
+    + max_parallel_delegations: int
+    + direct_execute_when_no_fit: boolean
+  }
+
+  class AgentRuntimeState {
+    + agent_id: UUID
+    + current_role_mode: RoleMode
+    + current_execution_posture: ExecutionPosture
+    + current_task_id: UUID
+    + queue_depth: int
+    + availability: boolean
+    + last_active: timestamp
+  }
+
+  AgentInstance "1" --> "1" AgentConfig : configured by
+  AgentInstance "1" --> "1" AgentTopology : positioned in
+  AgentInstance "1" --> "1" TeamMembership : member of
+  AgentInstance "1" --> "1" DelegationPolicy : follows
+  AgentInstance "1" --> "1" AgentRuntimeState : has live state
+  AgentConfig --> AuthorityProfile
+  AgentConfig --> MemoryScope
+  AgentTopology --> OrgPosition
+  AgentRuntimeState --> RoleMode
+  AgentRuntimeState --> ExecutionPosture
+  DelegationPolicy --> ExecutionPosture
+}
+
+note right of AgentTopology
+  Org position describes where the
+  agent sits in the org chart.
+  It should not be conflated with
+  whether the agent is orchestrating
+  or directly executing a task.
+end note
+
+note right of AgentRuntimeState
+  Runtime state is ephemeral.
+  Stored in capacity scheduler,
+  not in task store or memory.
+  Same agent may orchestrate one
+  task and directly execute another.
+end note
+@enduml`;
+const capacity = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Capacity and scheduling layer" {
+
+  package "Agent registry" {
+    database "Agent runtime states\n(availability, queue depth,\ncurrent task, last active)" as ARS
+    component "Heartbeat monitor\n(detects unavailable agents)" as HM
+  }
+
+  package "Scheduler" {
+    component "Task prioritiser\n(priority queue per team)" as TP
+    component "Eligibility filter\n(required capabilities,\npermitted tools, authority constraints)" as EF
+    component "Capability matcher\n(compute skill / fit score\nfor eligible agents)" as CM
+    component "Assignment scorer\n(rank = priority + fit +\nload + SLA risk)" as AS
+    component "Priority arbiter\n(P0 only may preempt)" as PA
+    component "Preemption manager\n(pause low-priority work,\ncheckpoint resumable state)" as PM
+  }
+
+  package "Priority levels" {
+    component "P0 — critical\n(SLA breach imminent,\nblocker on live system)" as P0
+    component "P1 — high\n(KR-delegated,\ncustomer-facing)" as P1
+    component "P2 — normal\n(standard team task)" as P2
+    component "P3 — low\n(background,\nbatch, analysis)" as P3
+  }
+
+  package "Queue management" {
+    component "Team task queue\n(per-team FIFO + priority)" as TTQ
+    component "Overflow policy\n(max queue depth per agent)" as OFP
+    component "Spillover router\n(route to idle eligible peer\nin same team)" as SR
+    component "Cross-team spillover\n(KR-approved only)" as CTS
+  }
+
+  package "Preemption contract" {
+    component "Checkpoint-safe states\n(only selected workflow states\nmay be paused)" as CSS
+    component "Resource lease handler\n(release or persist external\nresources before pausing)" as RLH
+    component "Resumable artifact gate\n(agent must emit resume token /\ncheckpoint artifact before yield)" as RAG
+    component "Branch preemption guard\n(no preemption after irreversible\nbranch side effect unless compensated)" as BPG
+  }
+
+  package "Availability rules" {
+    component "Max concurrent tasks\n(configurable per agent)" as MCT
+    component "Cooldown period\n(post-task recovery window)" as CP
+    component "Drain policy\n(graceful shutdown,\nredistribute queue)" as DP
+  }
+}
+
+HM --> ARS : update availability
+TP --> EF : choose next work item
+EF --> CM : filter eligible agents
+CM --> AS : fit score per agent
+AS --> ARS : read load + availability
+AS --> TTQ : dequeue + assign best fit
+TP --> PA : check priority class
+PA --> PM : preempt only if P0
+PM --> CSS : pause allowed?
+CSS --> RLH : yes
+RLH --> RAG : release/persist resources
+RAG --> BPG : checkpoint emitted
+BPG --> ARS : pause runtime + free slot
+TTQ --> OFP : queue full?
+OFP --> SR : spill to idle peer
+SR --> CTS : no idle peers in team
+
+P0 & P1 & P2 & P3 --> TP : feed priority queue
+MCT --> AS : enforce concurrency cap
+CP --> ARS : mark recovering
+DP --> TTQ : redistribute on shutdown
+
+note right of AS
+  Scheduling is not least-loaded only.
+  Rank only among eligible agents.
+  Default ordering:
+  capability fit → priority urgency
+  → load → SLA risk.
+end note
+
+note right of PM
+  Preemption is tightly bounded:
+  P0 only, checkpoint-safe states only,
+  and never after irreversible side
+  effects unless compensation exists.
+end note
+
+note right of CTS
+  Cross-team spillover
+  requires KR approval.
+  Prevents team boundaries
+  from eroding silently.
+end note
+@enduml`;
+const idempotency = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam sequenceParticipantBackgroundColor #EEEDFE
+skinparam sequenceParticipantBorderColor #534AB7
+skinparam sequenceArrowColor #534AB7
+skinparam linetype ortho
+
+package "Idempotency and event safety" {
+
+  package "Event contract" {
+    component "Every event carries:\n- event_id (UUID)\n- idempotency_key (task_id + transition)\n- sequence_number (per task)\n- produced_at (timestamp)\n- delivery: at-least-once" as EC
+  }
+
+  package "Transition guard (task store)" {
+    component "Idempotency check\n(has this transition been\napplied already?)" as IC
+    component "Sequence validator\n(is this the next expected\nsequence number?)" as SV
+    component "Transition lock\n(optimistic lock on\ncurrent_state + version)" as TL
+    component "Duplicate detector\n(idempotency_key index)" as DD
+  }
+
+  package "Consumer safety rules" {
+    component "Raw event log writer\n→ append idempotent\n(event_id as dedup key)" as C1
+    component "Memory extraction worker\n→ check event_id before\nwriting to Graphiti" as C2
+    component "Merkle audit writer\n→ event_id dedup,\nappend-only chain" as C3
+    component "Task store updater\n→ optimistic lock,\nreject stale transitions" as C4
+    component "Notification engine\n→ idempotency_key dedup,\nskip if already sent" as C5
+  }
+
+  package "Replay safety" {
+    component "Replay buffer\n(full event stream retained)" as RB
+    component "Consumer offset tracking\n(each consumer tracks\nits own position)" as COT
+    component "Safe replay window\n(configurable, default 24h)" as SRW
+  }
+}
+
+EC --> DD : on every event
+DD --> IC : not seen before
+DD --> C1 : duplicate → drop silently
+IC --> SV : expected sequence?
+SV --> TL : yes → acquire lock
+TL --> C4 : locked → apply transition
+TL --> C1 : lock failed → retry
+SV --> C1 : out of sequence → dead letter
+
+RB --> COT : consumers track offset
+COT --> SRW : replay within window
+
+note right of TL
+  Optimistic concurrency.
+  task_state + version field.
+  If version mismatch on write,
+  reject and re-read state.
+  Prevents duplicate transitions
+  under concurrent delivery.
+end note
+
+note right of C2
+  Memory extraction must be replay-safe.
+  Duplicate event delivery cannot create
+  duplicate graph nodes or duplicated
+  supersession edges in Graphiti.
+end note
+@enduml`;
+const branches = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Branch / join semantics" {
+
+  package "Fork model" {
+    component "fork_branch()\n- spawns N child task records\n- each child has own state\n- parent state = WAITING_ON_BRANCHES\n- parent cannot advance until join" as FB
+    component "Branch record\n- branch_id\n- parent_task_id\n- assigned_specialist\n- state\n- result / artifact" as BR
+  }
+
+  package "Join policies (per workflow definition)" {
+    component "ALL_SUCCESS\n(default)\nParent advances only when\nall branches succeed" as JP1
+    component "ANY_SUCCESS\n(optional)\nParent advances when first\nbranch succeeds.\nOthers cancelled." as JP2
+    component "PARTIAL_SUCCESS\n(configurable threshold)\nParent advances when N-of-M\nbranches succeed." as JP3
+    component "BEST_EFFORT\n(low-priority workflows only)\nParent advances regardless.\nFailed branches logged." as JP4
+  }
+
+  package "Failure handling" {
+    component "Branch failure handler\n- increment retry on failed branch\n- notify generalist\n- check join policy" as BFH
+    component "Sibling cancellation\n(on ANY_SUCCESS or\nafter max retries exceeded:\ncancel remaining siblings)" as SC
+    component "Compensation manager\n(when branch fails after\nsibling already succeeded:\nrun compensation workflow)" as CM
+    component "Compensation workflow\n(human-authored markdown,\ntriggered automatically)" as CW
+  }
+
+  package "Join gate" {
+    component "Branch completion tracker\n(counts done / total)" as BCT
+    component "Policy evaluator\n(applies join policy)" as PE
+    component "Result aggregator\n(merges branch artifacts\ninto parent task)" as RA
+    component "Parent state releaser\n(transitions parent from\nWAITING → next state)" as PSR
+  }
+}
+
+FB --> BR : creates N branch records
+BR --> BFH : on branch failure
+BFH --> SC : cancel siblings if needed
+BFH --> CM : compensate if needed
+CM --> CW : trigger compensation workflow
+
+BCT --> PE : on each branch completion
+PE --> JP1 & JP2 & JP3 & JP4 : evaluate policy
+JP1 & JP2 & JP3 & JP4 --> RA : policy satisfied
+RA --> PSR : release parent
+
+note right of CM
+  Compensation runs when:
+  branch B fails AND
+  sibling branch A already
+  committed a side effect.
+  Compensation undoes A's
+  side effect where possible.
+end note
+
+note right of CW
+  Compensation workflows
+  are human-defined markdown
+  files. Same format as
+  regular workflows.
+  Triggered by compensation
+  manager, not by agents.
+end note
+@enduml`;
+const eval_ = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Evaluation layer" {
+
+  package "Trigger" {
+    component "Task close event\n(task.completed or task.failed)" as TCE
+    component "Evaluation trigger\n(every closed task — INV-15)" as ET
+  }
+
+  package "Evaluation record" {
+    component "task_id\n(links to task store)" as EF1
+    component "completion_quality\n(advisory 0-1 score + rationale)" as EF2
+    component "rework_count\n(how many times specialist\nreturned to same state)" as EF3
+    component "workflow_fit_score\n(advisory: was matched workflow\nactually appropriate?)" as EF4
+    component "delegation_efficiency\n(did task land in right\nteam first time?)" as EF5
+    component "memory_usefulness\n(did retrieval help, miss,\nor add noise?)" as EF6
+    component "false_escalations\n(escalations that resolved\nwithout human input)" as EF7
+    component "time_to_complete\n(vs SLA)" as EF8
+    component "branch_success_rate\n(if parallel — ratio of\nbranches that succeeded)" as EF9
+    component "evidence_summary\n(objective signals +\nscorer rationale)" as EF10
+  }
+
+  package "Evaluation engine" {
+    component "Rules-based checks\n(SLA met, retries, reopen,\nbranch outcomes)" as RBC
+    component "LLM-assisted quality scorer\n(reads workflow success condition,\nartifacts, and rules output)" as QS
+    component "Efficiency analyser\n(reads task store history\nfor rework + retries)" as EA
+    component "Escalation auditor\n(classifies escalations as\nnecessary vs false)" as EAU
+    component "Memory hit analyser\n(was context retrieval\nactually used?)" as MHA
+  }
+
+  package "Evaluation store" {
+    database "Evaluation records\n(per task, time-series)" as ERS
+    component "Aggregate metrics\n(per agent, team, workflow)" as AM
+    component "Trend detector\n(degradation / improvement\nover time)" as TD
+  }
+
+  package "Feedback paths" {
+    component "Agent feedback\n(advisory signals only,\nnot automatic punishment)" as AF
+    component "Workflow feedback\n(poor workflow_fit_score →\nflag for human review)" as WF
+    component "Background Hands\n(surfaces patterns to human\nfor workflow improvement)" as BH
+  }
+}
+
+TCE --> ET
+ET --> RBC & QS & EA & EAU & MHA
+RBC --> EF8 & EF9 & EF10
+QS --> EF2 & EF4 & EF10
+EA --> EF3 & EF5
+EAU --> EF7
+MHA --> EF6
+
+EF1 & EF2 & EF3 & EF4 & EF5 & EF6 & EF7 & EF8 & EF9 & EF10 --> ERS
+ERS --> AM
+AM --> TD
+
+TD --> AF : agent-level trends
+TD --> WF : workflow-level signals
+WF --> BH : surface to human
+
+note right of QS
+  LLM scoring is advisory.
+  It should help trend detection,
+  workflow review, and coaching,
+  not act as ground truth for
+  irreversible personnel decisions.
+end note
+
+note right of EF10
+  Evidence summary combines
+  objective checks and model
+  rationale so humans can audit
+  why a score was produced.
+end note
+@enduml`;
+const wfversion = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Workflow versioning" {
+
+  package "Versioned workflow definition" {
+    component "workflow_id\n(stable, human-readable slug)" as WF1
+    component "version\n(semver: major.minor.patch)" as WF2
+    component "status\n(draft / active / deprecated / archived)" as WF3
+    component "effective_from\n(timestamp)" as WF4
+    component "breaking_change\n(bool — major version bump)" as WF5
+    component "migration_notes\n(human-authored prose)" as WF6
+    component "changelog\n(diff from prior version)" as WF7
+  }
+
+  package "Version lifecycle" {
+    component "Draft\n(human editing,\nnot yet active)" as VL1
+    component "Active\n(live, new tasks use this)" as VL2
+    component "Deprecated\n(new tasks blocked,\nin-flight tasks continue)" as VL3
+    component "Archived\n(no tasks running,\nread-only history)" as VL4
+  }
+
+  package "In-flight task rules" {
+    component "Task pinned to version\nat creation time (INV-10)\nVersion stored in task record" as TPN
+    component "Non-breaking change\n(minor / patch)\n→ in-flight tasks auto-migrate" as NBC
+    component "Breaking change\n(major version)\n→ in-flight tasks complete on\nold version, new tasks on new" as BC
+    component "Emergency rollback\n→ reactivate prior active version\n→ human approves migration\nfor stranded tasks" as ERB
+  }
+
+  package "Workflow registry (versioned)" {
+    database "Version store\n(all versions, immutable)" as VS
+    component "Active version index\n(workflow_id → active version)" as AVI
+    component "Hot reload handler\n(on file change → parse →\nvalidate → register new version)" as HRH
+    component "Deprecation scheduler\n(auto-deprecate after\nconfigurable window)" as DS
+  }
+}
+
+VL1 --> VL2 : human activates
+VL2 --> VL3 : human deprecates or new major published
+VL3 --> VL4 : last in-flight task closes
+VL2 --> VL1 : emergency rollback reactivates prior
+
+HRH --> VS : register new version
+HRH --> AVI : update active pointer
+HRH --> WF5 : detect breaking change
+WF5 --> BC : yes → pin in-flight to old
+WF5 --> NBC : no → migrate in-flight
+
+TPN --> AVI : read at task creation
+DS --> VL3 : auto-deprecate stale versions
+ERB --> AVI : repoint active version
+
+note right of BC
+  Breaking change policy:
+  in-flight tasks run to
+  completion on old version.
+  Prevents mid-task state
+  machine corruption.
+end note
+
+note right of ERB
+  Emergency rollback requires
+  human approval. Stranded
+  in-flight tasks (on now-
+  deprecated new version) get
+  individual human migration
+  decisions. Never auto-migrated
+  on breaking changes.
+end note
+@enduml`;
+const memwrite = `@startuml
+skinparam backgroundColor transparent
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #EEEDFE
+skinparam componentBorderColor #534AB7
+skinparam packageBackgroundColor #F1EFE8
+skinparam packageBorderColor #B4B2A9
+skinparam databaseBackgroundColor #E1F5EE
+skinparam databaseBorderColor #0F6E56
+skinparam arrowColor #534AB7
+skinparam noteBackgroundColor #E1F5EE
+skinparam noteBorderColor #0F6E56
+skinparam linetype ortho
+
+package "Memory write criteria" {
+
+  package "Trigger filter (what is memory-worthy)" {
+    component "WRITE: task state transitions" as T1
+    component "WRITE: blocker encountered or resolved" as T2
+    component "WRITE: task completion with outcome" as T3
+    component "WRITE: escalation event" as T4
+    component "WRITE: cross-team handoff" as T5
+    component "WRITE: requirement clarification /\nexternal constraint discovery" as T6
+    component "SKIP: intermediate LLM tool calls" as T7
+    component "SKIP: retries within same state" as T8
+    component "SKIP: heartbeat / polling events" as T9
+  }
+
+  package "Fact vs interpretation split" {
+    component "Fact layer (high confidence)\n- task id, timestamps, agent ids\n- tool calls and results\n- final artifacts and outputs\n- explicit blocker descriptions\n- requirement clarifications" as FL
+    component "Interpretation layer (lower confidence)\n- root cause inference\n- lesson learned summary\n- approach effectiveness rating\n- pattern labels" as IL
+  }
+
+  package "Memory node schema" {
+    component "content\n(extracted fact or interpretation)" as MN1
+    component "type\n(fact | interpretation)" as MN2
+    component "confidence_score\n(derived from evidence,\nnot self-reported only)" as MN3
+    component "confidence_basis\n(provenance strength,\ncorroboration count,\ndownstream validation)" as MN4
+    component "provenance\n(source event_id + task_id)" as MN5
+    component "created_at / updated_at" as MN6
+    component "tier\n(agentic | team | org)" as MN7
+    component "retention_class\n(permanent | rolling_90d | rolling_30d)" as MN8
+  }
+
+  package "Write safety rules" {
+    component "Deduplication\n(check for near-identical existing node\nbefore writing, merge if found)" as WS1
+    component "Contradiction handler\n(new fact contradicts existing:\nmark old as superseded,\nwrite new with provenance)" as WS2
+    component "Evidence floor\n(weak interpretations without\nprovenance or corroboration\nare discarded)" as WS3
+    component "Validation upgrader\n(if downstream execution confirms\na prior interpretation, raise\nits confidence and mark validated)" as WS4
+    component "Retention / decay policy\n(facts: permanent\ninterpretations: rolling window\nautomatically pruned)" as WS5
+  }
+}
+
+T1 & T2 & T3 & T4 & T5 & T6 --> FL : extract facts
+T1 & T3 & T6 --> IL : extract interpretations
+T7 & T8 & T9 --> WS3 : skip — below threshold
+
+FL --> MN1 & MN2 & MN3 & MN4 & MN5 & MN6 & MN7 & MN8
+IL --> MN1 & MN2 & MN3 & MN4 & MN5 & MN6 & MN7 & MN8
+
+MN1 --> WS1 : dedup check
+WS1 --> WS2 : contradiction check
+WS2 --> WS3 : evidence check
+WS3 --> WS4 : validation update
+WS4 --> WS5 : apply retention class
+
+note right of IL
+  Interpretations are labelled
+  as such and carry evidence-based
+  confidence. Agents querying memory
+  should weight facts higher than
+  interpretations unless later
+  execution validates the inference.
+end note
+
+note right of WS2
+  Contradiction policy:
+  never delete old facts.
+  Mark as superseded with
+  pointer to new node.
+  Full provenance chain
+  preserved for audit.
+end note
+@enduml`;
+
+render('kernel', kernel);
+render('identity', identity);
+render('capacity', capacity);
+render('idempotency', idempotency);
+render('branches', branches);
+render('eval', eval_);
+render('wfversion', wfversion);
+render('memwrite', memwrite);
+</script>
+</body>
+</html>
